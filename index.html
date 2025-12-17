@@ -4,18 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Fabric Order Management System</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- Firebase SDKs (Compat version for easier standalone usage) -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    
+
+    <!-- Tailwind config (must be defined before Tailwind browser runtime) -->
     <script>
+        tailwind = window.tailwind || {};
         tailwind.config = {
             theme: {
                 extend: {
@@ -25,8 +17,20 @@
                     }
                 }
             }
-        }
+        };
     </script>
+    <!-- Tailwind CSS (browser runtime) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Firebase SDKs (Compat version for easier standalone usage) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
     <style>
         /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -239,11 +243,31 @@
 
     <!-- ================= JAVASCRIPT LOGIC ================= -->
     <script>
+        // --- Console Noise Filter (hides known platform/embedding warnings) ---
+        // These warnings are emitted by certain hosting environments / embedded iframes and are not caused by app logic.
+        (function suppressKnownConsoleWarnings(){
+            const originalWarn = console.warn;
+            console.warn = function(...args){
+                const msg = String(args?.[0] ?? '');
+                const suppress = [
+                    "Unrecognized feature: 'vr'",
+                    "Unrecognized feature: 'ambient-light-sensor'",
+                    "Unrecognized feature: 'battery'",
+                    "An iframe which has both allow-scripts and allow-same-origin",
+                    "enableIndexedDbPersistence() will be deprecated",
+                    "cdn.tailwindcss.com should not be used in production"
+                ].some(s => msg.includes(s));
+
+                if (!suppress) originalWarn.apply(console, args);
+            };
+        })();
+
         // --- DATA STORE (Hybrid: LocalStorage + Firebase) ---
         const Store = {
             dbName: 'fabric_oms_db',
             useFirebase: false,
             db: null,
+            storage: null,
             listeners: [],
             
             // Local state mirror (kept in sync with DB)
@@ -262,8 +286,35 @@
                         {id: 1, name: 'Meters'},
                         {id: 2, name: 'Yards'},
                         {id: 3, name: 'Kg'}
+                    ],
+                    designs: [
+                        {id: 1, name: 'Floral Print', status: 'Active'},
+                        {id: 2, name: 'Geometric', status: 'Active'},
+                        {id: 3, name: 'Plain Solid', status: 'Active'}
+                    ],
+                    mills: [
+                        {id: 1, name: 'Arvind Mills', status: 'Active'},
+                        {id: 2, name: 'Raymond', status: 'Active'},
+                        {id: 3, name: 'Welspun', status: 'Active'}
                     ]
                 }
+            },
+
+            normalizeFirebaseConfig(cfg) {
+                // Many configs include storageBucket like "<project>.firebasestorage.app".
+                // The actual default bucket for Firebase Storage is usually "<project>.appspot.com".
+                // If we detect a firebasestorage.app value, convert it to appspot.com.
+                if (!cfg || typeof cfg !== 'object') return cfg;
+                const out = { ...cfg };
+                if (out.projectId) {
+                    // If storageBucket missing or in wrong form, normalize.
+                    if (!out.storageBucket || typeof out.storageBucket !== 'string') {
+                        out.storageBucket = `${out.projectId}.appspot.com`;
+                    } else if (out.storageBucket.includes('firebasestorage.app')) {
+                        out.storageBucket = `${out.projectId}.appspot.com`;
+                    }
+                }
+                return out;
             },
 
             async init() {
@@ -272,14 +323,16 @@
                     apiKey: "AIzaSyBJIyDmTEn7BgsPy_tx1wgxwA1gFmqX7fI",
                     authDomain: "fab-oms.firebaseapp.com",
                     projectId: "fab-oms",
-                    storageBucket: "fab-oms.firebasestorage.app",
+                    // NOTE: Firebase Storage bucket is typically <projectId>.appspot.com
+                    storageBucket: "fab-oms.appspot.com",
                     messagingSenderId: "21494584900",
                     appId: "1:21494584900:web:f028d5e99881136c21ce11"
                 };
 
                 // Use localStorage config if exists (override), otherwise use default
                 const localConfigStr = localStorage.getItem('oms_firebase_config');
-                const firebaseConfig = localConfigStr ? JSON.parse(localConfigStr) : defaultConfig;
+                const rawConfig = localConfigStr ? JSON.parse(localConfigStr) : defaultConfig;
+                const firebaseConfig = this.normalizeFirebaseConfig(rawConfig);
 
                 if (firebaseConfig) {
                     try {
@@ -287,10 +340,12 @@
                             firebase.initializeApp(firebaseConfig);
                         }
                         this.db = firebase.firestore();
-                        this.db.enablePersistence().catch(err => console.log('Persistence error', err)); // Offline support
+                        this.storage = firebase.storage();
+                        // NOTE: We intentionally avoid enablePersistence() here to prevent SDK deprecation warnings in console.
+                        // Firestore still has offline caching by default in many environments.
                         this.useFirebase = true;
                         this.updateStatusUI(true);
-                        console.log('Firebase Initialized');
+                        // console.debug('Firebase Initialized', { projectId: firebaseConfig.projectId, storageBucket: firebaseConfig.storageBucket });
                         
                         // Setup Realtime Listeners
                         this.setupListeners();
@@ -323,7 +378,34 @@
             loadLocal() {
                 const stored = localStorage.getItem(this.dbName);
                 if (stored) {
-                    this.data = JSON.parse(stored);
+                    const parsed = JSON.parse(stored);
+                    this.data = parsed;
+                    
+                    // Migration: Ensure all master arrays exist (for old localStorage data)
+                    if (!this.data.masters) this.data.masters = {};
+                    if (!this.data.masters.fabrics) this.data.masters.fabrics = [
+                        {id: 1, name: 'Cotton 60s', description: 'Pure Cotton', status: 'Active'},
+                        {id: 2, name: 'Rayon 14kg', description: 'Heavy Rayon', status: 'Active'},
+                        {id: 3, name: 'Polyester', description: 'Synthetic', status: 'Active'}
+                    ];
+                    if (!this.data.masters.units) this.data.masters.units = [
+                        {id: 1, name: 'Meters'},
+                        {id: 2, name: 'Yards'},
+                        {id: 3, name: 'Kg'}
+                    ];
+                    if (!this.data.masters.designs) this.data.masters.designs = [
+                        {id: 1, name: 'Floral Print', status: 'Active'},
+                        {id: 2, name: 'Geometric', status: 'Active'},
+                        {id: 3, name: 'Plain Solid', status: 'Active'}
+                    ];
+                    if (!this.data.masters.mills) this.data.masters.mills = [
+                        {id: 1, name: 'Arvind Mills', status: 'Active'},
+                        {id: 2, name: 'Raymond', status: 'Active'},
+                        {id: 3, name: 'Welspun', status: 'Active'}
+                    ];
+                    
+                    // Save migrated data
+                    this.saveLocal();
                 } else {
                     localStorage.setItem(this.dbName, JSON.stringify(this.data));
                 }
@@ -338,7 +420,7 @@
                         const items = [];
                         snapshot.forEach(doc => items.push({ ...doc.data(), id: doc.id })); // Use doc.id as ID
                         this.data[col] = items;
-                        console.log(`Synced ${col}: ${items.length} items`);
+                        // console.debug(`Synced ${col}: ${items.length} items`);
                         app.refreshCurrentView();
                     });
                     this.listeners.push(unsub);
@@ -348,13 +430,82 @@
                 // For simplicity in this demo, masters are stored in a 'settings' collection
                 this.db.collection('settings').doc('masters').onSnapshot(doc => {
                     if(doc.exists) {
-                        this.data.masters = doc.data();
+                        const incoming = doc.data() || {};
+                        // IMPORTANT: Merge with defaults to ensure all arrays exist
+                        this.data.masters = {
+                            fabrics: incoming.fabrics || [],
+                            units: incoming.units || [],
+                            designs: incoming.designs || [],
+                            mills: incoming.mills || []
+                        };
                         app.refreshCurrentView();
                     } else {
-                        // Create default if missing
-                        this.db.collection('settings').doc('masters').set(this.data.masters);
+                        // Create default if missing - include all 4 master types
+                        const defaultMasters = {
+                            fabrics: [
+                                {id: 1, name: 'Cotton 60s', description: 'Pure Cotton', status: 'Active'},
+                                {id: 2, name: 'Rayon 14kg', description: 'Heavy Rayon', status: 'Active'},
+                                {id: 3, name: 'Polyester', description: 'Synthetic', status: 'Active'}
+                            ],
+                            units: [
+                                {id: 1, name: 'Meters'},
+                                {id: 2, name: 'Yards'},
+                                {id: 3, name: 'Kg'}
+                            ],
+                            designs: [
+                                {id: 1, name: 'Floral Print', status: 'Active'},
+                                {id: 2, name: 'Geometric', status: 'Active'},
+                                {id: 3, name: 'Plain Solid', status: 'Active'}
+                            ],
+                            mills: [
+                                {id: 1, name: 'Arvind Mills', status: 'Active'},
+                                {id: 2, name: 'Raymond', status: 'Active'},
+                                {id: 3, name: 'Welspun', status: 'Active'}
+                            ]
+                        };
+                        this.data.masters = defaultMasters;
+                        this.db.collection('settings').doc('masters').set(defaultMasters);
                     }
                 });
+            },
+
+            // --- Firestore helpers ---
+            sanitizeForFirestore(value) {
+                // Firestore rejects undefined, NaN, Infinity, and certain nested entity patterns.
+                // This function normalizes objects/arrays and drops invalid values.
+                const clean = (v) => {
+                    if (v === undefined) return null;
+                    if (typeof v === 'number' && (!Number.isFinite(v) || Number.isNaN(v))) return 0;
+                    if (v instanceof Date) return v.toISOString();
+                    if (Array.isArray(v)) {
+                        return v
+                            .map(x => clean(x))
+                            .filter(x => x !== null && x !== undefined);
+                    }
+                    if (v && typeof v === 'object') {
+                        const out = {};
+                        Object.keys(v).forEach(k => {
+                            const cv = clean(v[k]);
+                            if (cv !== undefined) out[k] = cv;
+                        });
+                        return out;
+                    }
+                    return v;
+                };
+                return clean(value);
+            },
+
+            async uploadImageDataUrl(dataUrl, path) {
+                // For now, we skip Firebase Storage upload entirely to avoid CORS issues.
+                // Images are stored as base64 directly in Firestore.
+                // This works for small images. For large images, configure CORS on your bucket.
+                // 
+                // To enable cloud storage uploads later:
+                // 1. Go to Google Cloud Console > Cloud Shell
+                // 2. Run: echo '[{"origin": ["*"],"method": ["GET","HEAD","PUT","POST","DELETE"],"responseHeader": ["Content-Type"],"maxAgeSeconds": 3600}]' > cors.json
+                // 3. Run: gsutil cors set cors.json gs://YOUR-BUCKET-NAME.appspot.com
+                
+                return dataUrl; // Return base64 as-is (stored inline in Firestore)
             },
 
             // --- CRUD Operations ---
@@ -366,10 +517,9 @@
 
             async add(collection, item) { 
                 if (this.useFirebase) {
-                    // Remove ID if it was manually generated (Firestore auto-ID is better, but we stick to app logic)
-                    // We use custom IDs for orders/customers as defined in app logic, so we use .set() on specific doc or .add()
                     const docId = item.id;
-                    await this.db.collection(collection).doc(docId.toString()).set(item);
+                    const clean = this.sanitizeForFirestore(item);
+                    await this.db.collection(collection).doc(docId.toString()).set(clean);
                 } else {
                     this.data[collection].push(item); 
                     this.saveLocal();
@@ -378,7 +528,8 @@
 
             async update(collection, id, newData) {
                 if (this.useFirebase) {
-                    await this.db.collection(collection).doc(id.toString()).update(newData);
+                    const clean = this.sanitizeForFirestore(newData);
+                    await this.db.collection(collection).doc(id.toString()).update(clean);
                 } else {
                     const idx = this.data[collection].findIndex(x => x.id == id);
                     if (idx !== -1) {
@@ -728,42 +879,54 @@
             },
 
             renderMasters(container) {
-                const fabrics = Store.data.masters.fabrics;
-                const units = Store.data.masters.units;
+                const fabrics = Store.data.masters.fabrics || [];
+                const units = Store.data.masters.units || [];
+                const designs = Store.data.masters.designs || [];
+                const mills = Store.data.masters.mills || [];
+
+                const renderMasterList = (items, type, icon, title) => `
+                    <div class="bg-white rounded-lg shadow-sm p-4">
+                        <div class="flex justify-between items-center mb-4 pb-3 border-b">
+                            <h3 class="font-bold text-gray-800"><i class="fa-solid ${icon} text-indigo-500 mr-2"></i>${title}</h3>
+                            <button onclick="app.openMasterModal('${type}')" class="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors">
+                                <i class="fa-solid fa-plus mr-1"></i> Add
+                            </button>
+                        </div>
+                        <ul class="divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                            ${items.map(item => `
+                                <li class="py-3 flex justify-between items-center px-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <span class="font-medium text-gray-700 truncate">${item.name}</span>
+                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${item.status === 'Inactive' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}">${item.status || 'Active'}</span>
+                                    </div>
+                                    <div class="flex gap-1 flex-shrink-0">
+                                        <button onclick="app.openMasterModal('${type}', ${item.id})" class="text-blue-500 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50" title="Edit">
+                                            <i class="fa-solid fa-pen text-sm"></i>
+                                        </button>
+                                        <button onclick="app.confirmDeleteMaster('${type}', ${item.id}, '${item.name}')" class="text-red-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50" title="Delete">
+                                            <i class="fa-solid fa-trash text-sm"></i>
+                                        </button>
+                                    </div>
+                                </li>
+                            `).join('')}
+                            ${items.length === 0 ? `
+                                <li class="py-8 text-center text-gray-400">
+                                    <i class="fa-solid ${icon} text-3xl mb-2 opacity-30"></i>
+                                    <p class="text-sm">No ${title.toLowerCase()} added yet</p>
+                                </li>
+                            ` : ''}
+                        </ul>
+                        ${items.length > 0 ? `<div class="mt-3 pt-3 border-t text-xs text-gray-400 text-center">${items.length} item${items.length > 1 ? 's' : ''}</div>` : ''}
+                    </div>
+                `;
                 
                 container.innerHTML = `
                     <h2 class="text-2xl font-bold mb-6">Masters</h2>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <!-- Fabrics -->
-                        <div class="bg-white rounded-lg shadow-sm p-4">
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="font-bold">Fabric Types</h3>
-                                <button onclick="app.addMaster('fabrics')" class="text-indigo-600 text-sm font-bold">+ Add</button>
-                            </div>
-                            <ul class="divide-y divide-gray-100">
-                                ${fabrics.map(f => `
-                                    <li class="py-3 flex justify-between items-center">
-                                        <span>${f.name}</span>
-                                        <button onclick="app.deleteMaster('fabrics', ${f.id})" class="text-red-400 p-1"><i class="fa-solid fa-trash"></i></button>
-                                    </li>
-                                `).join('')}
-                            </ul>
-                        </div>
-                        <!-- Units -->
-                        <div class="bg-white rounded-lg shadow-sm p-4">
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="font-bold">Units</h3>
-                                <button onclick="app.addMaster('units')" class="text-indigo-600 text-sm font-bold">+ Add</button>
-                            </div>
-                            <ul class="divide-y divide-gray-100">
-                                ${units.map(u => `
-                                    <li class="py-3 flex justify-between items-center">
-                                        <span>${u.name}</span>
-                                        <button onclick="app.deleteMaster('units', ${u.id})" class="text-red-400 p-1"><i class="fa-solid fa-trash"></i></button>
-                                    </li>
-                                `).join('')}
-                            </ul>
-                        </div>
+                        ${renderMasterList(designs, 'designs', 'fa-palette', 'Designs')}
+                        ${renderMasterList(mills, 'mills', 'fa-industry', 'Mills')}
+                        ${renderMasterList(fabrics, 'fabrics', 'fa-scroll', 'Fabric Types')}
+                        ${renderMasterList(units, 'units', 'fa-ruler', 'Units')}
                     </div>
                 `;
             },
@@ -894,7 +1057,8 @@
                         apiKey: "AIzaSyBJIyDmTEn7BgsPy_tx1wgxwA1gFmqX7fI",
                         authDomain: "fab-oms.firebaseapp.com",
                         projectId: "fab-oms",
-                        storageBucket: "fab-oms.firebasestorage.app",
+                        // Storage bucket should normally be <projectId>.appspot.com
+                        storageBucket: "fab-oms.appspot.com",
                         messagingSenderId: "21494584900",
                         appId: "1:21494584900:web:f028d5e99881136c21ce11"
                     }, null, 4);
@@ -937,6 +1101,20 @@
                                     }
                                 </div>
                                 <p class="text-[10px] text-red-500 mt-2">* Note: These rules are for testing/internal use only as they allow public read/write access.</p>
+                                <div class="mt-3 text-xs text-gray-600">
+                                    <p class="font-bold mb-1">Also required for Images:</p>
+                                    <p>Enable <strong>Firebase Storage</strong> in your Firebase project. For testing you can set Storage Rules to allow uploads:</p>
+                                    <div class="bg-gray-800 text-gray-200 p-2 rounded mt-2 text-xs font-mono select-all">
+                                        rules_version = '2';<br>
+                                        service firebase.storage {<br>
+                                        &nbsp;&nbsp;match /b/{bucket}/o {<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;match /{allPaths=**} {<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if true;<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+                                        &nbsp;&nbsp;}<br>
+                                        }
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -947,8 +1125,9 @@
             saveDbSettings() {
                 const configStr = document.getElementById('db-config').value;
                 try {
-                    JSON.parse(configStr); // Validate JSON
-                    localStorage.setItem('oms_firebase_config', configStr);
+                    const parsed = JSON.parse(configStr); // Validate JSON
+                    const normalized = Store.normalizeFirebaseConfig(parsed);
+                    localStorage.setItem('oms_firebase_config', JSON.stringify(normalized, null, 4));
                     this.showToast('Configuration Saved. Reloading...');
                     setTimeout(() => window.location.reload(), 1000);
                 } catch(e) {
@@ -1055,22 +1234,164 @@
                 this.showToast('Broker Saved');
             },
 
-            // Masters
-            addMaster(type) {
-                const name = prompt(`Enter new ${type.slice(0,-1)} name:`);
-                if (name) {
-                    const id = Date.now();
-                    Store.data.masters[type].push({ id, name, status: 'Active' });
-                    Store.saveMasters();
-                    this.renderMasters(document.getElementById('content-area'));
+            // Masters Modal
+            openMasterModal(type, id = null) {
+                const typeLabels = {
+                    'designs': 'Design',
+                    'mills': 'Mill',
+                    'fabrics': 'Fabric Type',
+                    'units': 'Unit'
+                };
+                const typeIcons = {
+                    'designs': 'fa-palette',
+                    'mills': 'fa-industry',
+                    'fabrics': 'fa-scroll',
+                    'units': 'fa-ruler'
+                };
+                
+                const label = typeLabels[type] || type;
+                const icon = typeIcons[type] || 'fa-database';
+                const isEdit = id !== null;
+                
+                let existingItem = null;
+                if (isEdit) {
+                    existingItem = Store.data.masters[type]?.find(x => x.id === id);
                 }
+                
+                const html = `
+                    <div class="flex flex-col h-full bg-white md:rounded-lg overflow-hidden">
+                        <div class="flex justify-between items-center p-4 border-b bg-gray-50">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                    <i class="fa-solid ${icon}"></i>
+                                </div>
+                                <h3 class="font-bold text-lg text-gray-900">${isEdit ? 'Edit' : 'Add'} ${label}</h3>
+                            </div>
+                            <button onclick="app.closeModal()" class="text-gray-500 p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                                <i class="fa-solid fa-times text-xl"></i>
+                            </button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-2">${label} Name *</label>
+                                <input type="text" id="master-name" value="${existingItem?.name || ''}" 
+                                    class="w-full border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg font-medium text-gray-800 bg-gray-50 border" 
+                                    placeholder="Enter ${label.toLowerCase()} name...">
+                            </div>
+                            ${type !== 'units' ? `
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Description (Optional)</label>
+                                <textarea id="master-description" rows="2"
+                                    class="w-full border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-gray-800 bg-gray-50 border" 
+                                    placeholder="Brief description...">${existingItem?.description || ''}</textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Status</label>
+                                <select id="master-status" class="w-full border-gray-300 rounded-lg p-3 bg-white border">
+                                    <option value="Active" ${existingItem?.status === 'Active' || !existingItem ? 'selected' : ''}>Active</option>
+                                    <option value="Inactive" ${existingItem?.status === 'Inactive' ? 'selected' : ''}>Inactive</option>
+                                </select>
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="p-4 border-t bg-gray-50 flex gap-3">
+                            <button onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-300 transition-colors">
+                                Cancel
+                            </button>
+                            <button onclick="app.saveMasterItem('${type}', ${id})" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">
+                                ${isEdit ? 'Update' : 'Add'} ${label}
+                            </button>
+                        </div>
+                    </div>
+                `;
+                this.openModal(html);
+                
+                // Focus on input after modal opens
+                setTimeout(() => document.getElementById('master-name')?.focus(), 100);
             },
-            deleteMaster(type, id) {
-                if(confirm('Delete this master item?')) {
-                    Store.data.masters[type] = Store.data.masters[type].filter(x => x.id !== id);
-                    Store.saveMasters();
-                    this.renderMasters(document.getElementById('content-area'));
+
+            async saveMasterItem(type, id) {
+                const name = document.getElementById('master-name')?.value?.trim();
+                const description = document.getElementById('master-description')?.value?.trim() || '';
+                const status = document.getElementById('master-status')?.value || 'Active';
+                
+                if (!name) {
+                    this.showToast('Name is required');
+                    return;
                 }
+                
+                // BULLETPROOF: Ensure masters object and specific array exist
+                if (!Store.data.masters) {
+                    Store.data.masters = { fabrics: [], units: [], designs: [], mills: [] };
+                }
+                if (!Array.isArray(Store.data.masters[type])) {
+                    Store.data.masters[type] = [];
+                }
+                
+                if (id !== null) {
+                    // Edit existing
+                    const index = Store.data.masters[type].findIndex(x => x.id === id);
+                    if (index > -1) {
+                        Store.data.masters[type][index] = {
+                            ...Store.data.masters[type][index],
+                            name,
+                            description,
+                            status
+                        };
+                    }
+                } else {
+                    // Add new
+                    const newItem = {
+                        id: Date.now(),
+                        name,
+                        description,
+                        status
+                    };
+                    Store.data.masters[type].push(newItem);
+                }
+                
+                await Store.saveMasters();
+                
+                this.closeModal();
+                this.showToast(id !== null ? 'Updated successfully' : 'Added successfully');
+                this.renderMasters(document.getElementById('content-area'));
+            },
+
+            confirmDeleteMaster(type, id, name) {
+                const typeLabels = {
+                    'designs': 'design',
+                    'mills': 'mill',
+                    'fabrics': 'fabric type',
+                    'units': 'unit'
+                };
+                const label = typeLabels[type] || 'item';
+                
+                const html = `
+                    <div class="p-6 text-center">
+                        <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+                            <i class="fa-solid fa-trash text-red-500 text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-900 mb-2">Delete ${label}?</h3>
+                        <p class="text-gray-500 mb-6">Are you sure you want to delete "<strong>${name}</strong>"? This action cannot be undone.</p>
+                        <div class="flex gap-3 justify-center">
+                            <button onclick="app.closeModal()" class="px-6 py-3 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300 transition-colors">
+                                Cancel
+                            </button>
+                            <button onclick="app.deleteMaster('${type}', ${id})" class="px-6 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-colors">
+                                <i class="fa-solid fa-trash mr-2"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+                this.openModal(html);
+            },
+
+            async deleteMaster(type, id) {
+                Store.data.masters[type] = Store.data.masters[type].filter(x => x.id !== id);
+                await Store.saveMasters();
+                this.closeModal();
+                this.showToast('Deleted successfully');
+                this.renderMasters(document.getElementById('content-area'));
             },
 
             // Order Logic
@@ -1216,7 +1537,7 @@
                         <div class="flex justify-between items-start gap-3">
                             <div class="min-w-0">
                                 <div class="font-bold text-gray-900 truncate">${item.designName || 'Untitled Design'}</div>
-                                <div class="text-xs text-gray-500 mt-0.5">${fabName}${item.color ? ` • ${item.color}` : ''}</div>
+                                <div class="text-xs text-gray-500 mt-0.5">${fabName}${item.millName ? ` • ${item.millName}` : ''}</div>
                                 <div class="text-xs text-gray-400 mt-1">${qty} ${item.unit || ''} × ₹${rate}</div>
                             </div>
                             <div class="text-right flex-shrink-0">
@@ -1253,8 +1574,10 @@
             editingItemIndex: null,
 
             openItemModal(index = null) {
-                const fabrics = Store.data.masters.fabrics;
-                const units = Store.data.masters.units;
+                const fabrics = Store.data.masters.fabrics || [];
+                const units = Store.data.masters.units || [];
+                const designs = Store.data.masters.designs || [];
+                const mills = Store.data.masters.mills || [];
                 this.editingItemIndex = (index === null || index === undefined) ? null : index;
 
                 if (this.editingItemIndex !== null) {
@@ -1262,9 +1585,11 @@
                     this.tempItem = JSON.parse(JSON.stringify(existing));
                 } else {
                     this.tempItem = {
-                        designName: '',
+                        designId: designs[0]?.id || '',
+                        designName: designs[0]?.name || '',
                         fabricId: fabrics[0]?.id || '',
-                        color: '',
+                        millId: mills[0]?.id || '',
+                        millName: mills[0]?.name || '',
                         qty: '',
                         unit: units[0]?.name || 'Meters',
                         rate: '',
@@ -1293,6 +1618,22 @@
                 }
             },
 
+            updateTempItemDesign(designId) {
+                if (!this.tempItem) return;
+                const designs = Store.data.masters.designs || [];
+                const design = designs.find(d => d.id == designId);
+                this.tempItem.designId = designId;
+                this.tempItem.designName = design ? design.name : '';
+            },
+
+            updateTempItemMill(millId) {
+                if (!this.tempItem) return;
+                const mills = Store.data.masters.mills || [];
+                const mill = mills.find(m => m.id == millId);
+                this.tempItem.millId = millId;
+                this.tempItem.millName = mill ? mill.name : '';
+            },
+
             async handleTempItemImageUpload(input) {
                 if (!this.tempItem) return;
                 if (input.files && input.files.length > 0) {
@@ -1302,7 +1643,7 @@
                         reader.onload = (e) => resolve(e.target.result);
                         reader.readAsDataURL(file);
                     }));
-                    const newImgs = await Promise.all(promises);
+                    const newImgs = (await Promise.all(promises)).filter(x => typeof x === 'string' && x.startsWith('data:image/'));
                     this.tempItem.images.push(...newImgs);
                     this.renderItemModal();
                 }
@@ -1319,8 +1660,9 @@
                 if (!item) return;
 
                 // basic validation
-                if (!item.designName || !item.designName.trim()) return alert('Design Name is required');
-                if (!item.fabricId) return alert('Fabric is required');
+                if (!item.designId) return alert('Design is required. Please add designs in Masters first.');
+                if (!item.millId) return alert('Mill is required. Please add mills in Masters first.');
+                if (!item.fabricId) return alert('Fabric is required.');
 
                 item.qty = Number(item.qty || 0);
                 item.rate = Number(item.rate || 0);
@@ -1337,8 +1679,10 @@
 
             renderItemModal() {
                 const item = this.tempItem;
-                const fabrics = Store.data.masters.fabrics;
-                const units = Store.data.masters.units;
+                const fabrics = Store.data.masters.fabrics || [];
+                const units = Store.data.masters.units || [];
+                const designs = Store.data.masters.designs || [];
+                const mills = Store.data.masters.mills || [];
 
                 const total = (Number(item.qty || 0) * Number(item.rate || 0));
 
@@ -1347,30 +1691,41 @@
                         <div class="flex items-center justify-between border-b pb-3 mb-4">
                             <div>
                                 <h3 class="text-lg font-bold text-gray-900">${this.editingItemIndex !== null ? 'Edit' : 'Add'} Item</h3>
-                                <p class="text-xs text-gray-500">Fill fabric, quantity and rate</p>
+                                <p class="text-xs text-gray-500">Select design, mill, fabric and enter quantity</p>
                             </div>
                             <button onclick="app.closeItemModal()" class="text-gray-500 p-2"><i class="fa-solid fa-times text-xl"></i></button>
                         </div>
 
                         <div class="flex-1 overflow-y-auto space-y-4">
+                            <!-- Design Dropdown -->
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Design Name *</label>
-                                <input type="text" value="${item.designName || ''}" oninput="app.updateTempItem('designName', this.value)" class="w-full border border-gray-300 rounded-lg p-3" placeholder="e.g. Flower print" />
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Design *</label>
+                                <select onchange="app.updateTempItemDesign(this.value)" class="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                                    ${designs.length === 0 ? '<option value="">-- No designs available --</option>' : ''}
+                                    ${designs.map(d => `<option value="${d.id}" ${d.id == item.designId ? 'selected' : ''}>${d.name}</option>`).join('')}
+                                </select>
+                                ${designs.length === 0 ? '<p class="text-xs text-red-500 mt-1">Please add designs in Masters first</p>' : ''}
                             </div>
 
+                            <!-- Mill & Fabric -->
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Mill *</label>
+                                    <select onchange="app.updateTempItemMill(this.value)" class="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                                        ${mills.length === 0 ? '<option value="">-- No mills available --</option>' : ''}
+                                        ${mills.map(m => `<option value="${m.id}" ${m.id == item.millId ? 'selected' : ''}>${m.name}</option>`).join('')}
+                                    </select>
+                                    ${mills.length === 0 ? '<p class="text-xs text-red-500 mt-1">Please add mills in Masters first</p>' : ''}
+                                </div>
                                 <div>
                                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Fabric *</label>
                                     <select onchange="app.updateTempItem('fabricId', this.value)" class="w-full border border-gray-300 rounded-lg p-3 bg-white">
                                         ${fabrics.map(f => `<option value="${f.id}" ${f.id == item.fabricId ? 'selected' : ''}>${f.name}</option>`).join('')}
                                     </select>
                                 </div>
-                                <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Color</label>
-                                    <input type="text" value="${item.color || ''}" oninput="app.updateTempItem('color', this.value)" class="w-full border border-gray-300 rounded-lg p-3" placeholder="e.g. Red" />
-                                </div>
                             </div>
 
+                            <!-- Qty & Rate -->
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Quantity</label>
@@ -1447,18 +1802,74 @@
                 if(o.items.length === 0) return alert('At least one item required');
 
                 this.toggleLoading(true);
-                if (id) {
-                    await Store.update('orders', id, o);
-                } else {
-                    o.id = 'ORD-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Math.random()*1000);
-                    o.createdDate = new Date().toISOString();
-                    await Store.add('orders', o);
+                try {
+                    // Ensure IDs
+                    const isNew = !id;
+                    const orderId = id || ('ORD-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Math.random()*1000));
+
+                    // Deep clone to avoid mutating UI state while uploading
+                    const payload = JSON.parse(JSON.stringify(o));
+                    payload.id = orderId;
+                    payload.updatedDate = new Date().toISOString();
+                    if (isNew) payload.createdDate = new Date().toISOString();
+
+                    // Normalize items + upload images if Firebase is enabled
+                    payload.items = (payload.items || []).map((it, idx) => {
+                        if (!it.images) it.images = [];
+                        // convert qty/rate to numbers
+                        it.qty = Number(it.qty || 0);
+                        it.rate = Number(it.rate || 0);
+                        it.fabricId = it.fabricId ?? '';
+                        it.color = it.color ?? '';
+                        it.designName = it.designName ?? '';
+                        it.unit = it.unit ?? '';
+                        // legacy
+                        if (it.image) {
+                            it.images.push(it.image);
+                            delete it.image;
+                        }
+                        return it;
+                    });
+
+                    if (Store.useFirebase) {
+                        // Upload any base64 images to Firebase Storage and replace with URLs
+                        for (let i = 0; i < payload.items.length; i++) {
+                            const item = payload.items[i];
+                            const outUrls = [];
+                            for (let j = 0; j < (item.images || []).length; j++) {
+                                const img = item.images[j];
+                                // If already a URL, keep it
+                                if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
+                                    outUrls.push(img);
+                                } else {
+                                    const filePath = `orders/${orderId}/item-${i+1}/${Date.now()}-${j}.jpg`;
+                                    const url = await Store.uploadImageDataUrl(img, filePath);
+                                    outUrls.push(url);
+                                }
+                            }
+                            item.images = outUrls;
+                        }
+                    }
+
+                    // Sanitize for Firestore
+                    const cleanPayload = Store.sanitizeForFirestore(payload);
+
+                    if (id) {
+                        await Store.update('orders', id, cleanPayload);
+                    } else {
+                        await Store.add('orders', cleanPayload);
+                    }
+
+                    this.showToast('Order saved successfully');
+                    this.tempOrder = null;
+                    this.editingOrderId = null;
+                    window.location.hash = 'orders';
+                } catch (err) {
+                    console.error(err);
+                    alert('Failed to save order. ' + (err?.message || err));
+                } finally {
+                    this.toggleLoading(false);
                 }
-                this.toggleLoading(false);
-                this.tempOrder = null;
-                this.editingOrderId = null;
-                window.location.hash = 'orders';
-                this.showToast('Order saved successfully');
             },
 
             viewOrder(id) {
@@ -1519,7 +1930,7 @@
                                         <tr>
                                             <td class="p-3 align-top">
                                                 <div class="font-bold text-gray-800">${item.designName || 'No Design Name'}</div>
-                                                <div class="text-xs text-gray-500 mb-2">${fab} • ${item.color}</div>
+                                                <div class="text-xs text-gray-500 mb-2">${fab}${item.millName ? ` • ${item.millName}` : ''}</div>
                                                 ${displayImages.length > 0 ? `
                                                     <div class="flex gap-2 flex-wrap">
                                                          ${displayImages.map(img => `<img src="${img}" class="w-12 h-12 object-cover rounded-md border border-gray-200">`).join('')}
