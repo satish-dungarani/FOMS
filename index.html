@@ -167,7 +167,7 @@
                 
                 <!-- Floating Action Button for New Order -->
                 <div class="relative -top-6">
-                    <button onclick="app.openOrderModal()" class="bg-indigo-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:bg-indigo-700 active:scale-95 transition-transform border-4 border-gray-50">
+                    <button onclick="app.navigateToOrderForm()" class="bg-indigo-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:bg-indigo-700 active:scale-95 transition-transform border-4 border-gray-50">
                         <i class="fa-solid fa-plus text-2xl"></i>
                     </button>
                 </div>
@@ -505,6 +505,7 @@
                     case 'brokers': this.renderBrokers(content); break;
                     case 'masters': this.renderMasters(content); break;
                     case 'reports': this.renderReports(content); break;
+                    case 'order-form': this.renderOrderFormPage(content); break;
                     default: this.renderDashboard(content); break;
                 }
             },
@@ -771,7 +772,7 @@
                                 <i class="fa-solid fa-search absolute left-3 top-3 text-gray-400 text-sm"></i>
                                 <input type="text" placeholder="Search Order..." onkeyup="app.filterOrders(this.value)" class="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                             </div>
-                            <button onclick="app.openOrderModal()" class="hidden md:flex bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm items-center whitespace-nowrap">
+                            <button onclick="app.navigateToOrderForm()" class="hidden md:flex bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm items-center whitespace-nowrap">
                                 <i class="fa-solid fa-plus mr-1"></i> New Order
                             </button>
                         </div>
@@ -796,7 +797,7 @@
                                     <div class="font-bold text-gray-900 text-lg">${this.formatCurrency(this.calculateOrderTotal(o))}</div>
                                     <div class="flex gap-4">
                                         <button onclick="app.viewOrder('${o.id}')" class="text-gray-500"><i class="fa-solid fa-eye text-lg"></i></button>
-                                        <button onclick="app.openOrderModal('${o.id}')" class="text-blue-600"><i class="fa-solid fa-pen text-lg"></i></button>
+                                        <button onclick="app.navigateToOrderForm('${o.id}')" class="text-blue-600"><i class="fa-solid fa-pen text-lg"></i></button>
                                         <button onclick="app.deleteItem('orders', '${o.id}')" class="text-red-500"><i class="fa-solid fa-trash text-lg"></i></button>
                                     </div>
                                 </div>
@@ -830,7 +831,7 @@
                                         <td class="px-6 py-3"><span class="px-2 py-1 rounded-full text-xs ${this.getStatusColor(o.status)}">${o.status}</span></td>
                                         <td class="px-6 py-3 text-right">
                                             <button onclick="app.viewOrder('${o.id}')" class="text-gray-600 hover:text-gray-900 mr-2"><i class="fa-solid fa-eye"></i></button>
-                                            <button onclick="app.openOrderModal('${o.id}')" class="text-blue-600 hover:text-blue-900 mr-2"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="app.navigateToOrderForm('${o.id}')" class="text-blue-600 hover:text-blue-900 mr-2"><i class="fa-solid fa-pen"></i></button>
                                             <button onclick="app.deleteItem('orders', '${o.id}')" class="text-red-600 hover:text-red-900"><i class="fa-solid fa-trash"></i></button>
                                         </td>
                                     </tr>
@@ -1066,56 +1067,66 @@
 
             // Order Logic
             tempOrder: null,
+            editingOrderId: null,
 
-            openOrderModal(id = null) {
+            navigateToOrderForm(id = null) {
+                this.editingOrderId = id;
+                window.location.hash = 'order-form';
+            },
+
+            renderOrderFormPage(container) {
                 const customers = Store.getAll('customers');
                 const brokers = Store.getAll('brokers');
                 const fabrics = Store.data.masters.fabrics;
                 const units = Store.data.masters.units;
-                
+                const isEdit = !!this.editingOrderId;
+
                 if (customers.length === 0) {
-                    return alert('Please add customers first.');
+                    alert('Please add customers first.');
+                    window.location.hash = 'orders';
+                    return;
                 }
 
-                if (id) {
-                    this.tempOrder = JSON.parse(JSON.stringify(Store.getById('orders', id)));
-                } else {
-                    this.tempOrder = {
-                        id: '', 
-                        date: new Date().toISOString().split('T')[0],
-                        customerId: customers[0].id,
-                        customerName: customers[0].name,
-                        brokerId: '',
-                        status: 'New',
-                        priority: 'Normal',
-                        items: []
-                    };
+                // Initialize tempOrder if needed
+                if (!this.tempOrder || (isEdit && this.tempOrder.id !== this.editingOrderId) || (!isEdit && this.tempOrder.id)) {
+                     if (isEdit) {
+                        const existing = Store.getById('orders', this.editingOrderId);
+                        if(existing) this.tempOrder = JSON.parse(JSON.stringify(existing));
+                        else this.tempOrder = this.createEmptyOrder(customers);
+                    } else {
+                        this.tempOrder = this.createEmptyOrder(customers);
+                    }
                 }
-
-                this.renderOrderForm(customers, brokers, fabrics, units, id);
-            },
-
-            renderOrderForm(customers, brokers, fabrics, units, isEdit) {
-                const o = this.tempOrder;
                 
-                const html = `
-                    <div class="flex flex-col h-full bg-gray-50 md:bg-white">
-                        <div class="flex justify-between items-center border-b bg-white p-4 sticky top-0 z-10">
-                            <h3 class="text-lg font-bold text-gray-900">${isEdit ? 'Edit' : 'New'} Order</h3>
-                            <button onclick="app.closeModal()" class="text-gray-500 p-1"><i class="fa-solid fa-times text-xl"></i></button>
+                const o = this.tempOrder;
+
+                container.innerHTML = `
+                    <div class="flex flex-col h-full bg-gray-50 max-w-4xl mx-auto">
+                        <!-- Header -->
+                        <div class="flex justify-between items-center bg-white p-4 sticky top-0 z-30 shadow-sm">
+                            <div class="flex items-center gap-3">
+                                <button onclick="window.history.back()" class="text-gray-500 hover:text-gray-800 p-2 -ml-2">
+                                    <i class="fa-solid fa-arrow-left text-xl"></i>
+                                </button>
+                                <h3 class="text-lg font-bold text-gray-900">${isEdit ? 'Edit' : 'New'} Order</h3>
+                            </div>
                         </div>
                         
-                        <div class="flex-1 overflow-y-auto p-4 space-y-4">
-                            <!-- Header Info -->
-                            <div class="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                                <div class="grid grid-cols-2 gap-3">
+                        <!-- Form Content -->
+                        <div class="flex-1 overflow-y-auto p-4 space-y-6 pb-32">
+                             <!-- Order Header Card -->
+                            <div class="bg-white p-4 rounded-xl shadow-sm space-y-4 border border-gray-100">
+                                <h4 class="font-bold text-gray-800 border-b pb-2 mb-2 flex items-center gap-2">
+                                    <i class="fa-regular fa-calendar text-indigo-500"></i> Order Details
+                                </h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label class="block text-xs font-bold text-gray-500 uppercase">Date</label>
-                                        <input type="date" id="o-date" value="${o.date}" onchange="app.updateTempOrder('date', this.value)" class="mt-1 w-full border rounded p-2 bg-gray-50">
+                                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Date</label>
+                                        <input type="date" id="o-date" value="${o.date}" onchange="app.updateTempOrder('date', this.value)" class="w-full border-gray-300 rounded-lg p-3 bg-gray-50 border focus:ring-2 focus:ring-indigo-200 outline-none transition-all">
                                     </div>
                                     <div>
-                                        <label class="block text-xs font-bold text-gray-500 uppercase">Status</label>
-                                        <select onchange="app.updateTempOrder('status', this.value)" class="mt-1 w-full border rounded p-2 bg-gray-50">
+                                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label>
+                                        <select onchange="app.updateTempOrder('status', this.value)" class="w-full border-gray-300 rounded-lg p-3 bg-gray-50 border focus:ring-2 focus:ring-indigo-200 outline-none transition-all">
                                             <option value="New" ${o.status === 'New' ? 'selected' : ''}>New</option>
                                             <option value="In Progress" ${o.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                                             <option value="Completed" ${o.status === 'Completed' ? 'selected' : ''}>Completed</option>
@@ -1123,14 +1134,14 @@
                                     </div>
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase">Customer</label>
-                                    <select onchange="app.updateTempOrder('customerId', this.value)" class="mt-1 w-full border rounded p-3 bg-gray-50">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Customer</label>
+                                    <select onchange="app.updateTempOrder('customerId', this.value)" class="w-full border-gray-300 rounded-lg p-3 bg-gray-50 border focus:ring-2 focus:ring-indigo-200 outline-none transition-all">
                                         ${customers.map(c => `<option value="${c.id}" ${c.id === o.customerId ? 'selected' : ''}>${c.name}</option>`).join('')}
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase">Broker</label>
-                                    <select onchange="app.updateTempOrder('brokerId', this.value)" class="mt-1 w-full border rounded p-3 bg-gray-50">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Broker (Optional)</label>
+                                    <select onchange="app.updateTempOrder('brokerId', this.value)" class="w-full border-gray-300 rounded-lg p-3 bg-gray-50 border focus:ring-2 focus:ring-indigo-200 outline-none transition-all">
                                         <option value="">-- None --</option>
                                         ${brokers.map(b => `<option value="${b.id}" ${b.id === o.brokerId ? 'selected' : ''}>${b.name}</option>`).join('')}
                                     </select>
@@ -1138,67 +1149,122 @@
                             </div>
 
                             <!-- Items List -->
-                            <div>
-                                <div class="flex justify-between items-center mb-2">
-                                    <h4 class="font-bold text-gray-700">Order Items (${o.items.length})</h4>
-                                    <button onclick="app.addOrderItem()" class="text-indigo-600 font-bold text-sm">+ Add Item</button>
+                            <div class="space-y-4">
+                                <div class="flex justify-between items-center">
+                                    <h4 class="font-bold text-gray-800 flex items-center gap-2">
+                                        <i class="fa-solid fa-shirt text-indigo-500"></i> Items (${o.items.length})
+                                    </h4>
+                                    <button onclick="app.addOrderItem()" class="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-100 transition-colors border border-indigo-200 shadow-sm">
+                                        <i class="fa-solid fa-plus mr-1"></i> Add Item
+                                    </button>
                                 </div>
-                                <div id="order-items-container" class="space-y-3">
+                                <div id="order-items-container" class="space-y-4">
                                     ${o.items.map((item, index) => this.renderOrderItemRow(item, index, fabrics, units)).join('')}
-                                    ${o.items.length === 0 ? '<div class="p-6 text-center text-gray-400 bg-white border-2 border-dashed rounded-lg">No items yet</div>' : ''}
+                                    ${o.items.length === 0 ? '<div class="p-8 text-center text-gray-400 bg-white border-2 border-dashed border-gray-300 rounded-xl">Tap "Add Item" to start</div>' : ''}
                                 </div>
                             </div>
                         </div>
 
                         <!-- Footer Actions -->
-                        <div class="p-4 bg-white border-t flex items-center justify-between sticky bottom-0 z-10">
-                             <div class="text-lg font-bold text-gray-800">${this.formatCurrency(this.calculateOrderTotal(o))}</div>
-                             <button onclick="app.saveOrder('${isEdit ? o.id : ''}')" class="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold shadow-lg">Save Order</button>
+                        <div class="fixed bottom-0 left-0 right-0 md:absolute bg-white border-t p-4 flex items-center justify-between z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] pb-safe">
+                             <div class="flex flex-col">
+                                <span class="text-xs text-gray-500 font-bold uppercase">Total Amount</span>
+                                <span class="text-xl font-bold text-indigo-700">${this.formatCurrency(this.calculateOrderTotal(o))}</span>
+                             </div>
+                             <button onclick="app.saveOrder('${isEdit ? o.id : ''}')" class="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">Save Order</button>
                         </div>
                     </div>
                 `;
-                this.openModal(html);
+            },
+
+            createEmptyOrder(customers) {
+                 return {
+                    id: '', 
+                    date: new Date().toISOString().split('T')[0],
+                    customerId: customers[0]?.id || '',
+                    customerName: customers[0]?.name || '',
+                    brokerId: '',
+                    status: 'New',
+                    priority: 'Normal',
+                    items: []
+                };
             },
 
             renderOrderItemRow(item, index, fabrics, units) {
+                if (!item.images) item.images = [];
+                if (item.image) { item.images.push(item.image); delete item.image; }
+
                 return `
-                    <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-200 relative">
-                        <button onclick="app.removeOrderItem(${index})" class="absolute top-2 right-2 text-red-500 p-1"><i class="fa-solid fa-trash"></i></button>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 relative group transition-all hover:shadow-md">
+                        <div class="absolute top-0 right-0 p-2">
+                             <button onclick="app.removeOrderItem(${index})" class="text-gray-400 hover:text-red-500 bg-white rounded-full p-2 shadow-sm border border-gray-100"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
                         
-                        <div class="mb-2 pr-6">
-                            <label class="text-[10px] text-gray-400 uppercase font-bold">Design</label>
-                            <input type="text" value="${item.designName || ''}" placeholder="Design Name" onchange="app.updateOrderItem(${index}, 'designName', this.value)" class="w-full font-medium border-b border-gray-200 focus:border-indigo-500 outline-none py-1">
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-2 mb-2">
-                            <div>
-                                <label class="text-[10px] text-gray-400 uppercase font-bold">Fabric</label>
-                                <select onchange="app.updateOrderItem(${index}, 'fabricId', this.value)" class="w-full text-sm border rounded bg-gray-50 p-1">
-                                    ${fabrics.map(f => `<option value="${f.id}" ${f.id == item.fabricId ? 'selected' : ''}>${f.name}</option>`).join('')}
-                                </select>
+                        <div class="space-y-4">
+                            <!-- Row 1: Design -->
+                            <div class="pr-10">
+                                <label class="block text-[10px] text-gray-400 uppercase font-bold mb-1">Design / SKU</label>
+                                <input type="text" value="${item.designName || ''}" placeholder="Enter Design Name..." onchange="app.updateOrderItem(${index}, 'designName', this.value)" class="w-full font-bold text-gray-800 text-lg border-b border-gray-200 focus:border-indigo-500 outline-none py-1 bg-transparent placeholder-gray-300">
                             </div>
-                            <div>
-                                <label class="text-[10px] text-gray-400 uppercase font-bold">Color</label>
-                                <input type="text" value="${item.color || ''}" onchange="app.updateOrderItem(${index}, 'color', this.value)" class="w-full text-sm border rounded bg-gray-50 p-1">
-                            </div>
-                        </div>
 
-                        <div class="flex gap-2 items-end">
-                            <div class="flex-1">
-                                <label class="text-[10px] text-gray-400 uppercase font-bold">Qty / Rate</label>
-                                <div class="flex items-center">
-                                    <input type="number" value="${item.qty || 0}" onchange="app.updateOrderItem(${index}, 'qty', this.value)" class="w-16 border rounded-l p-1 text-center text-sm">
-                                    <select onchange="app.updateOrderItem(${index}, 'unit', this.value)" class="border-y border-r bg-gray-100 text-xs px-1 py-1.5 h-[30px]">
-                                        ${units.map(u => `<option value="${u.name}" ${u.name == item.unit ? 'selected' : ''}>${u.name}</option>`).join('')}
+                            <!-- Row 2: Fabric & Color -->
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                    <label class="block text-[10px] text-gray-400 uppercase font-bold mb-1">Fabric</label>
+                                    <select onchange="app.updateOrderItem(${index}, 'fabricId', this.value)" class="w-full text-sm bg-transparent border-none p-0 focus:ring-0 font-medium text-gray-700">
+                                        ${fabrics.map(f => `<option value="${f.id}" ${f.id == item.fabricId ? 'selected' : ''}>${f.name}</option>`).join('')}
                                     </select>
-                                    <span class="px-2 text-gray-400">x</span>
-                                    <input type="number" value="${item.rate || 0}" onchange="app.updateOrderItem(${index}, 'rate', this.value)" class="flex-1 border rounded p-1 text-sm">
+                                </div>
+                                <div class="bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                    <label class="block text-[10px] text-gray-400 uppercase font-bold mb-1">Color</label>
+                                    <input type="text" value="${item.color || ''}" placeholder="Color" onchange="app.updateOrderItem(${index}, 'color', this.value)" class="w-full text-sm bg-transparent border-none p-0 focus:ring-0 font-medium text-gray-700 placeholder-gray-300">
                                 </div>
                             </div>
-                            <label class="flex flex-col items-center justify-center w-10 h-10 border rounded bg-gray-50 cursor-pointer overflow-hidden relative">
-                                <input type="file" onchange="app.handleImageUpload(this, ${index})" class="absolute inset-0 opacity-0 z-10">
-                                ${item.image ? `<img src="${item.image}" class="w-full h-full object-cover">` : `<i class="fa-solid fa-camera text-gray-400"></i>`}
-                            </label>
+
+                            <!-- Row 3: Calculation -->
+                            <div class="bg-indigo-50 p-3 rounded-lg border border-indigo-100 flex items-center justify-between gap-2">
+                                <div class="flex-1">
+                                    <label class="block text-[10px] text-indigo-400 uppercase font-bold mb-1">Quantity</label>
+                                    <div class="flex items-center bg-white rounded border border-indigo-200 overflow-hidden">
+                                        <input type="number" value="${item.qty || 0}" onchange="app.updateOrderItem(${index}, 'qty', this.value)" class="w-full p-2 text-center font-bold text-gray-700 outline-none">
+                                        <select onchange="app.updateOrderItem(${index}, 'unit', this.value)" class="bg-gray-100 text-xs px-2 py-2 border-l border-gray-200 font-medium text-gray-600 outline-none">
+                                            ${units.map(u => `<option value="${u.name}" ${u.name == item.unit ? 'selected' : ''}>${u.name}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="text-indigo-300 text-lg pt-4">×</div>
+                                <div class="flex-1">
+                                    <label class="block text-[10px] text-indigo-400 uppercase font-bold mb-1">Rate</label>
+                                    <div class="bg-white rounded border border-indigo-200 overflow-hidden flex items-center">
+                                        <span class="pl-2 text-gray-400 text-xs">₹</span>
+                                        <input type="number" value="${item.rate || 0}" onchange="app.updateOrderItem(${index}, 'rate', this.value)" class="w-full p-2 font-bold text-gray-700 outline-none">
+                                    </div>
+                                </div>
+                                <div class="text-indigo-300 text-lg pt-4">=</div>
+                                <div class="flex-1 text-right pt-4">
+                                     <span class="block text-[10px] text-indigo-400 uppercase font-bold">Total</span>
+                                     <span class="font-bold text-indigo-700">${this.formatCurrency((item.qty || 0) * (item.rate || 0)).replace('₹', '')}</span>
+                                </div>
+                            </div>
+
+                            <!-- Row 4: Images -->
+                            <div>
+                                <label class="block text-[10px] text-gray-400 uppercase font-bold mb-2">Design Images</label>
+                                <div class="flex flex-wrap gap-2">
+                                    ${item.images.map((img, imgIdx) => `
+                                        <div class="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 group">
+                                            <img src="${img}" class="w-full h-full object-cover">
+                                            <button onclick="app.removeOrderImage(${index}, ${imgIdx})" class="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center rounded-bl-lg text-xs shadow-sm"><i class="fa-solid fa-times"></i></button>
+                                        </div>
+                                    `).join('')}
+                                    
+                                    <label class="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:text-indigo-500 hover:border-indigo-400 bg-gray-50 cursor-pointer active:scale-95 transition-all">
+                                        <i class="fa-solid fa-camera text-lg mb-1"></i>
+                                        <span class="text-[8px] font-bold uppercase">Add</span>
+                                        <input type="file" multiple accept="image/*" onchange="app.handleImageUpload(this, ${index})" class="hidden">
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1218,43 +1284,47 @@
                 if (fabrics.length === 0) return alert('No fabrics defined');
                 
                 this.tempOrder.items.push({
-                    designName: '', fabricId: fabrics[0].id, color: '', qty: 0, unit: units[0]?.name || 'Meters', rate: 0, image: null
+                    designName: '', fabricId: fabrics[0].id, color: '', qty: 0, unit: units[0]?.name || 'Meters', rate: 0, image: null, images: []
                 });
-                this.renderOrderForm(Store.getAll('customers'), Store.getAll('brokers'), fabrics, units, !!this.tempOrder.id);
+                this.renderOrderFormPage(document.getElementById('content-area'));
             },
 
             removeOrderItem(index) {
                 this.tempOrder.items.splice(index, 1);
-                this.renderOrderForm(Store.getAll('customers'), Store.getAll('brokers'), Store.data.masters.fabrics, Store.data.masters.units, !!this.tempOrder.id);
+                this.renderOrderFormPage(document.getElementById('content-area'));
             },
 
             updateOrderItem(index, field, value) {
                 this.tempOrder.items[index][field] = value;
+                
+                // Update footer total dynamically
+                const total = this.calculateOrderTotal(this.tempOrder);
+                const footerTotal = document.querySelector('.fixed.bottom-0 .text-xl.font-bold');
+                if(footerTotal) footerTotal.textContent = this.formatCurrency(total);
             },
 
-            handleImageUpload(input, index) {
+            async handleImageUpload(input, index) {
                 if (input.files && input.files.length > 0) {
-                    // Ensure images array exists
                     if (!this.tempOrder.items[index].images) this.tempOrder.items[index].images = [];
                     
-                    Array.from(input.files).forEach(file => {
-                        const reader = new FileReader();
-                        reader.onload = (e) => {
-                            this.tempOrder.items[index].images.push(e.target.result);
-                             const fabrics = Store.data.masters.fabrics;
-                             const units = Store.data.masters.units;
-                             this.renderOrderForm(Store.getAll('customers'), Store.getAll('brokers'), fabrics, units, !!this.tempOrder.id);
-                        };
-                        reader.readAsDataURL(file);
+                    const files = Array.from(input.files);
+                    const promises = files.map(file => {
+                        return new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onload = (e) => resolve(e.target.result);
+                            reader.readAsDataURL(file);
+                        });
                     });
+
+                    const newImages = await Promise.all(promises);
+                    this.tempOrder.items[index].images.push(...newImages);
+                    this.renderOrderFormPage(document.getElementById('content-area'));
                 }
             },
             
             removeOrderImage(itemIndex, imgIndex) {
                  this.tempOrder.items[itemIndex].images.splice(imgIndex, 1);
-                 const fabrics = Store.data.masters.fabrics;
-                 const units = Store.data.masters.units;
-                 this.renderOrderForm(Store.getAll('customers'), Store.getAll('brokers'), fabrics, units, !!this.tempOrder.id);
+                 this.renderOrderFormPage(document.getElementById('content-area'));
             },
 
             async saveOrder(id) {
@@ -1271,8 +1341,9 @@
                     await Store.add('orders', o);
                 }
                 this.toggleLoading(false);
-                this.closeModal();
-                if(this.currentRoute === 'orders') this.renderOrders(document.getElementById('content-area'));
+                this.tempOrder = null;
+                this.editingOrderId = null;
+                window.location.hash = 'orders';
                 this.showToast('Order saved successfully');
             },
 
@@ -1284,26 +1355,34 @@
                 const fabrics = Store.data.masters.fabrics;
 
                 const html = `
-                    <div class="print-area bg-white p-6 max-w-3xl mx-auto h-full">
+                    <div class="print-area bg-white p-6 max-w-3xl mx-auto h-full flex flex-col">
                         <div class="flex justify-between items-start mb-6 border-b pb-4">
                             <div>
                                 <h1 class="text-2xl font-bold text-gray-800">INVOICE</h1>
-                                <p class="text-gray-500 text-sm">#${o.id}</p>
+                                <p class="text-gray-500 text-sm">#${o.id.split('-').pop()}</p>
                             </div>
                             <div class="text-right">
                                 <p class="text-sm font-bold">${o.date}</p>
-                                <span class="text-xs px-2 py-1 bg-gray-100 rounded">${o.status}</span>
+                                <span class="text-xs px-2 py-1 bg-gray-100 rounded border border-gray-200">${o.status}</span>
                             </div>
                         </div>
 
-                        <div class="mb-6">
-                            <h3 class="text-xs font-bold text-gray-400 uppercase mb-1">Bill To</h3>
-                            <p class="font-bold">${o.customerName}</p>
-                            <p class="text-sm text-gray-600">${customer.phone}</p>
-                            <p class="text-sm text-gray-600 whitespace-pre-line">${customer.address || ''}</p>
+                        <div class="mb-6 grid grid-cols-2 gap-4">
+                            <div>
+                                <h3 class="text-xs font-bold text-gray-400 uppercase mb-1">Bill To</h3>
+                                <p class="font-bold text-gray-800">${o.customerName}</p>
+                                <p class="text-sm text-gray-600">${customer.phone}</p>
+                                <p class="text-sm text-gray-600 whitespace-pre-line">${customer.address || ''}</p>
+                            </div>
+                            ${broker ? `
+                            <div class="text-right">
+                                <h3 class="text-xs font-bold text-gray-400 uppercase mb-1">Broker</h3>
+                                <p class="font-bold text-gray-800">${broker.name}</p>
+                            </div>
+                            ` : ''}
                         </div>
 
-                        <div class="border rounded-lg overflow-hidden mb-6">
+                        <div class="border rounded-lg overflow-hidden mb-6 flex-1">
                             <table class="w-full text-left text-sm">
                                 <thead class="bg-gray-50 border-b">
                                     <tr>
@@ -1316,36 +1395,46 @@
                                 <tbody class="divide-y">
                                     ${o.items.map((item) => {
                                         const fab = fabrics.find(f => f.id == item.fabricId)?.name || 'Unknown';
+                                        
+                                        // Handle legacy single image or new array
+                                        let displayImages = [];
+                                        if (item.images && item.images.length) displayImages = item.images;
+                                        else if (item.image) displayImages = [item.image];
+
                                         return `
                                         <tr>
-                                            <td class="p-3">
-                                                <div class="font-medium">${item.designName}</div>
-                                                <div class="text-xs text-gray-500">${fab} - ${item.color}</div>
-                                                ${item.images && item.images.length > 0 ? `
-                                                    <div class="flex gap-1 mt-1 flex-wrap">
-                                                         ${item.images.map(img => `<img src="${img}" class="w-10 h-10 object-cover rounded border">`).join('')}
+                                            <td class="p-3 align-top">
+                                                <div class="font-bold text-gray-800">${item.designName || 'No Design Name'}</div>
+                                                <div class="text-xs text-gray-500 mb-2">${fab} • ${item.color}</div>
+                                                ${displayImages.length > 0 ? `
+                                                    <div class="flex gap-2 flex-wrap">
+                                                         ${displayImages.map(img => `<img src="${img}" class="w-12 h-12 object-cover rounded-md border border-gray-200">`).join('')}
                                                     </div>
-                                                ` : (item.image ? `<img src="${item.image}" class="w-10 h-10 object-cover rounded border mt-1">` : '')}
+                                                ` : ''}
                                             </td>
-                                            <td class="p-3 text-right">${item.qty} ${item.unit}</td>
-                                            <td class="p-3 text-right">${item.rate}</td>
-                                            <td class="p-3 text-right font-medium">${this.formatCurrency(item.qty * item.rate)}</td>
+                                            <td class="p-3 text-right align-top font-medium">${item.qty} <span class="text-xs text-gray-400">${item.unit}</span></td>
+                                            <td class="p-3 text-right align-top text-gray-600">${item.rate}</td>
+                                            <td class="p-3 text-right align-top font-bold text-gray-900">${this.formatCurrency((item.qty || 0) * (item.rate || 0)).replace('₹', '')}</td>
                                         </tr>
                                         `;
                                     }).join('')}
                                 </tbody>
-                                <tfoot class="bg-gray-50">
+                                <tfoot class="bg-gray-50 border-t">
                                     <tr>
-                                        <td colspan="3" class="p-3 text-right font-bold">Grand Total</td>
-                                        <td class="p-3 text-right font-bold text-lg">${this.formatCurrency(this.calculateOrderTotal(o))}</td>
+                                        <td colspan="3" class="p-4 text-right font-bold text-gray-600 uppercase text-xs tracking-wider">Grand Total</td>
+                                        <td class="p-4 text-right font-bold text-xl text-indigo-700">${this.formatCurrency(this.calculateOrderTotal(o))}</td>
                                     </tr>
                                 </tfoot>
                             </table>
                         </div>
 
-                        <div class="text-center no-print mt-8 space-x-4">
-                            <button onclick="window.print()" class="bg-gray-800 text-white px-6 py-2 rounded-full shadow-lg"><i class="fa-solid fa-print mr-2"></i> Print</button>
-                            <button onclick="app.closeModal()" class="text-gray-500">Close</button>
+                        <div class="text-center no-print mt-auto pt-6 border-t border-dashed">
+                            <div class="flex justify-center gap-4">
+                                <button onclick="window.print()" class="bg-gray-900 text-white px-8 py-3 rounded-xl shadow-lg hover:bg-black transition-colors flex items-center font-bold">
+                                    <i class="fa-solid fa-print mr-2"></i> Print
+                                </button>
+                                <button onclick="app.closeModal()" class="text-gray-500 px-6 py-3 hover:bg-gray-100 rounded-xl transition-colors font-medium">Close</button>
+                            </div>
                         </div>
                     </div>
                 `;
