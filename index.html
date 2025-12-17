@@ -14,6 +14,7 @@
     <!-- Firebase SDKs (Compat version for easier standalone usage) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
     
     <script>
         tailwind.config = {
@@ -244,6 +245,7 @@
             dbName: 'fabric_oms_db',
             useFirebase: false,
             db: null,
+            storage: null,
             listeners: [],
             
             // Local state mirror (kept in sync with DB)
@@ -287,6 +289,7 @@
                             firebase.initializeApp(firebaseConfig);
                         }
                         this.db = firebase.firestore();
+                        this.storage = firebase.storage();
                         this.db.enablePersistence().catch(err => console.log('Persistence error', err)); // Offline support
                         this.useFirebase = true;
                         this.updateStatusUI(true);
@@ -357,6 +360,43 @@
                 });
             },
 
+            // --- Firestore helpers ---
+            sanitizeForFirestore(value) {
+                // Firestore rejects undefined, NaN, Infinity, and certain nested entity patterns.
+                // This function normalizes objects/arrays and drops invalid values.
+                const clean = (v) => {
+                    if (v === undefined) return null;
+                    if (typeof v === 'number' && (!Number.isFinite(v) || Number.isNaN(v))) return 0;
+                    if (v instanceof Date) return v.toISOString();
+                    if (Array.isArray(v)) {
+                        return v
+                            .map(x => clean(x))
+                            .filter(x => x !== null && x !== undefined);
+                    }
+                    if (v && typeof v === 'object') {
+                        const out = {};
+                        Object.keys(v).forEach(k => {
+                            const cv = clean(v[k]);
+                            if (cv !== undefined) out[k] = cv;
+                        });
+                        return out;
+                    }
+                    return v;
+                };
+                return clean(value);
+            },
+
+            async uploadImageDataUrl(dataUrl, path) {
+                if (!this.useFirebase || !this.storage) return dataUrl; // fallback to inline
+                // Ensure it's a data URL before uploading
+                if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return dataUrl;
+
+                const ref = this.storage.ref().child(path);
+                // putString supports data_url directly
+                await ref.putString(dataUrl, 'data_url');
+                return await ref.getDownloadURL();
+            },
+
             // --- CRUD Operations ---
             getAll(collection) { return this.data[collection] || []; },
             
@@ -366,10 +406,9 @@
 
             async add(collection, item) { 
                 if (this.useFirebase) {
-                    // Remove ID if it was manually generated (Firestore auto-ID is better, but we stick to app logic)
-                    // We use custom IDs for orders/customers as defined in app logic, so we use .set() on specific doc or .add()
                     const docId = item.id;
-                    await this.db.collection(collection).doc(docId.toString()).set(item);
+                    const clean = this.sanitizeForFirestore(item);
+                    await this.db.collection(collection).doc(docId.toString()).set(clean);
                 } else {
                     this.data[collection].push(item); 
                     this.saveLocal();
@@ -378,7 +417,8 @@
 
             async update(collection, id, newData) {
                 if (this.useFirebase) {
-                    await this.db.collection(collection).doc(id.toString()).update(newData);
+                    const clean = this.sanitizeForFirestore(newData);
+                    await this.db.collection(collection).doc(id.toString()).update(clean);
                 } else {
                     const idx = this.data[collection].findIndex(x => x.id == id);
                     if (idx !== -1) {
@@ -468,6 +508,13 @@
 
             handleRoute() {
                 const hash = window.location.hash.substring(1) || 'dashboard';
+
+                // If leaving order form, clear any draft state
+                if (this.currentRoute === 'order-form' && hash !== 'order-form') {
+                    this.tempOrder = null;
+                    this.editingOrderId = null;
+                }
+
                 this.currentRoute = hash;
                 
                 // Update Desktop Sidebar UI
@@ -874,7 +921,8 @@
 
             closeModal() {
                 document.getElementById('modal-container').classList.add('hidden');
-                this.tempOrder = null;
+                // Do not clear tempOrder here because the Order Form uses modals for item add/edit.
+                // tempOrder is cleared when leaving the order-form route or after saving.
             },
 
             // Database Settings Modal
@@ -929,6 +977,20 @@
                                     }
                                 </div>
                                 <p class="text-[10px] text-red-500 mt-2">* Note: These rules are for testing/internal use only as they allow public read/write access.</p>
+                                <div class="mt-3 text-xs text-gray-600">
+                                    <p class="font-bold mb-1">Also required for Images:</p>
+                                    <p>Enable <strong>Firebase Storage</strong> in your Firebase project. For testing you can set Storage Rules to allow uploads:</p>
+                                    <div class="bg-gray-800 text-gray-200 p-2 rounded mt-2 text-xs font-mono select-all">
+                                        rules_version = '2';<br>
+                                        service firebase.storage {<br>
+                                        &nbsp;&nbsp;match /b/{bucket}/o {<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;match /{allPaths=**} {<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if true;<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+                                        &nbsp;&nbsp;}<br>
+                                        }
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1148,19 +1210,22 @@
                                 </div>
                             </div>
 
-                            <!-- Items List -->
+                            <!-- Items (Mobile-friendly: summary list + item modal) -->
                             <div class="space-y-4">
                                 <div class="flex justify-between items-center">
                                     <h4 class="font-bold text-gray-800 flex items-center gap-2">
                                         <i class="fa-solid fa-shirt text-indigo-500"></i> Items (${o.items.length})
                                     </h4>
-                                    <button onclick="app.addOrderItem()" class="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-100 transition-colors border border-indigo-200 shadow-sm">
-                                        <i class="fa-solid fa-plus mr-1"></i> Add Item
-                                    </button>
                                 </div>
-                                <div id="order-items-container" class="space-y-4">
-                                    ${o.items.map((item, index) => this.renderOrderItemRow(item, index, fabrics, units)).join('')}
-                                    ${o.items.length === 0 ? '<div class="p-8 text-center text-gray-400 bg-white border-2 border-dashed border-gray-300 rounded-xl">Tap "Add Item" to start</div>' : ''}
+
+                                <button onclick="app.openItemModal()" class="w-full bg-white border-2 border-dashed border-indigo-200 text-indigo-700 px-4 py-3 rounded-xl font-bold text-sm hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2">
+                                    <span class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center"><i class="fa-solid fa-plus"></i></span>
+                                    Add Item
+                                </button>
+
+                                <div id="order-items-container" class="grid grid-cols-1 md:grid-cols-2 gap-3 pb-10">
+                                    ${o.items.map((item, index) => this.renderOrderItemSummary(item, index, fabrics)).join('')}
+                                    ${o.items.length === 0 ? '<div class="md:col-span-2 p-8 text-center text-gray-400">No items added yet</div>' : ''}
                                 </div>
                             </div>
                         </div>
@@ -1190,84 +1255,227 @@
                 };
             },
 
-            renderOrderItemRow(item, index, fabrics, units) {
+            // Item cards inside Order Form (summary view)
+            renderOrderItemSummary(item, index, fabrics) {
                 if (!item.images) item.images = [];
                 if (item.image) { item.images.push(item.image); delete item.image; }
 
+                const fabName = fabrics.find(f => f.id == item.fabricId)?.name || 'Unknown Fabric';
+                const qty = Number(item.qty || 0);
+                const rate = Number(item.rate || 0);
+                const total = qty * rate;
+
                 return `
-                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 relative group transition-all hover:shadow-md">
-                        <div class="absolute top-0 right-0 p-2">
-                             <button onclick="app.removeOrderItem(${index})" class="text-gray-400 hover:text-red-500 bg-white rounded-full p-2 shadow-sm border border-gray-100"><i class="fa-solid fa-trash-can"></i></button>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:border-indigo-200 hover:shadow-md transition-all">
+                        <div class="flex justify-between items-start gap-3">
+                            <div class="min-w-0">
+                                <div class="font-bold text-gray-900 truncate">${item.designName || 'Untitled Design'}</div>
+                                <div class="text-xs text-gray-500 mt-0.5">${fabName}${item.color ? ` • ${item.color}` : ''}</div>
+                                <div class="text-xs text-gray-400 mt-1">${qty} ${item.unit || ''} × ₹${rate}</div>
+                            </div>
+                            <div class="text-right flex-shrink-0">
+                                <div class="font-bold text-indigo-700">${this.formatCurrency(total)}</div>
+                            </div>
                         </div>
-                        
-                        <div class="space-y-4">
-                            <!-- Row 1: Design -->
-                            <div class="pr-10">
-                                <label class="block text-[10px] text-gray-400 uppercase font-bold mb-1">Design / SKU</label>
-                                <input type="text" value="${item.designName || ''}" placeholder="Enter Design Name..." onchange="app.updateOrderItem(${index}, 'designName', this.value)" class="w-full font-bold text-gray-800 text-lg border-b border-gray-200 focus:border-indigo-500 outline-none py-1 bg-transparent placeholder-gray-300">
-                            </div>
 
-                            <!-- Row 2: Fabric & Color -->
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="bg-gray-50 p-2 rounded-lg border border-gray-100">
-                                    <label class="block text-[10px] text-gray-400 uppercase font-bold mb-1">Fabric</label>
-                                    <select onchange="app.updateOrderItem(${index}, 'fabricId', this.value)" class="w-full text-sm bg-transparent border-none p-0 focus:ring-0 font-medium text-gray-700">
-                                        ${fabrics.map(f => `<option value="${f.id}" ${f.id == item.fabricId ? 'selected' : ''}>${f.name}</option>`).join('')}
-                                    </select>
-                                </div>
-                                <div class="bg-gray-50 p-2 rounded-lg border border-gray-100">
-                                    <label class="block text-[10px] text-gray-400 uppercase font-bold mb-1">Color</label>
-                                    <input type="text" value="${item.color || ''}" placeholder="Color" onchange="app.updateOrderItem(${index}, 'color', this.value)" class="w-full text-sm bg-transparent border-none p-0 focus:ring-0 font-medium text-gray-700 placeholder-gray-300">
-                                </div>
-                            </div>
-
-                            <!-- Row 3: Calculation -->
-                            <div class="bg-indigo-50 p-3 rounded-lg border border-indigo-100 flex items-center justify-between gap-2">
-                                <div class="flex-1">
-                                    <label class="block text-[10px] text-indigo-400 uppercase font-bold mb-1">Quantity</label>
-                                    <div class="flex items-center bg-white rounded border border-indigo-200 overflow-hidden">
-                                        <input type="number" value="${item.qty || 0}" onchange="app.updateOrderItem(${index}, 'qty', this.value)" class="w-full p-2 text-center font-bold text-gray-700 outline-none">
-                                        <select onchange="app.updateOrderItem(${index}, 'unit', this.value)" class="bg-gray-100 text-xs px-2 py-2 border-l border-gray-200 font-medium text-gray-600 outline-none">
-                                            ${units.map(u => `<option value="${u.name}" ${u.name == item.unit ? 'selected' : ''}>${u.name}</option>`).join('')}
-                                        </select>
+                        <div class="mt-3 flex items-center justify-between gap-3 border-t border-gray-50 pt-3">
+                            <div class="flex items-center -space-x-2">
+                                ${item.images.slice(0,3).map(img => `
+                                    <div class="w-8 h-8 rounded-full border-2 border-white overflow-hidden bg-gray-100">
+                                        <img src="${img}" class="w-full h-full object-cover">
                                     </div>
-                                </div>
-                                <div class="text-indigo-300 text-lg pt-4">×</div>
-                                <div class="flex-1">
-                                    <label class="block text-[10px] text-indigo-400 uppercase font-bold mb-1">Rate</label>
-                                    <div class="bg-white rounded border border-indigo-200 overflow-hidden flex items-center">
-                                        <span class="pl-2 text-gray-400 text-xs">₹</span>
-                                        <input type="number" value="${item.rate || 0}" onchange="app.updateOrderItem(${index}, 'rate', this.value)" class="w-full p-2 font-bold text-gray-700 outline-none">
+                                `).join('')}
+                                ${item.images.length > 3 ? `
+                                    <div class="w-8 h-8 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-500">
+                                        +${item.images.length - 3}
                                     </div>
-                                </div>
-                                <div class="text-indigo-300 text-lg pt-4">=</div>
-                                <div class="flex-1 text-right pt-4">
-                                     <span class="block text-[10px] text-indigo-400 uppercase font-bold">Total</span>
-                                     <span class="font-bold text-indigo-700">${this.formatCurrency((item.qty || 0) * (item.rate || 0)).replace('₹', '')}</span>
-                                </div>
+                                ` : ''}
+                                ${item.images.length === 0 ? '<span class="text-xs text-gray-400">No images</span>' : ''}
                             </div>
 
-                            <!-- Row 4: Images -->
-                            <div>
-                                <label class="block text-[10px] text-gray-400 uppercase font-bold mb-2">Design Images</label>
-                                <div class="flex flex-wrap gap-2">
-                                    ${item.images.map((img, imgIdx) => `
-                                        <div class="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 group">
-                                            <img src="${img}" class="w-full h-full object-cover">
-                                            <button onclick="app.removeOrderImage(${index}, ${imgIdx})" class="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center rounded-bl-lg text-xs shadow-sm"><i class="fa-solid fa-times"></i></button>
-                                        </div>
-                                    `).join('')}
-                                    
-                                    <label class="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:text-indigo-500 hover:border-indigo-400 bg-gray-50 cursor-pointer active:scale-95 transition-all">
-                                        <i class="fa-solid fa-camera text-lg mb-1"></i>
-                                        <span class="text-[8px] font-bold uppercase">Add</span>
-                                        <input type="file" multiple accept="image/*" onchange="app.handleImageUpload(this, ${index})" class="hidden">
-                                    </label>
-                                </div>
+                            <div class="flex gap-2">
+                                <button onclick="app.openItemModal(${index})" class="px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold"><i class="fa-solid fa-pen mr-1"></i>Edit</button>
+                                <button onclick="app.removeOrderItem(${index})" class="px-3 py-2 rounded-lg bg-red-50 text-red-700 text-xs font-bold"><i class="fa-solid fa-trash mr-1"></i>Delete</button>
                             </div>
                         </div>
                     </div>
                 `;
+            },
+
+            // ===== Item Modal (mobile-friendly add/edit) =====
+            tempItem: null,
+            editingItemIndex: null,
+
+            openItemModal(index = null) {
+                const fabrics = Store.data.masters.fabrics;
+                const units = Store.data.masters.units;
+                this.editingItemIndex = (index === null || index === undefined) ? null : index;
+
+                if (this.editingItemIndex !== null) {
+                    const existing = this.tempOrder.items[this.editingItemIndex];
+                    this.tempItem = JSON.parse(JSON.stringify(existing));
+                } else {
+                    this.tempItem = {
+                        designName: '',
+                        fabricId: fabrics[0]?.id || '',
+                        color: '',
+                        qty: '',
+                        unit: units[0]?.name || 'Meters',
+                        rate: '',
+                        images: []
+                    };
+                }
+
+                if (!this.tempItem.images) this.tempItem.images = [];
+                this.renderItemModal();
+            },
+
+            closeItemModal() {
+                document.getElementById('modal-container').classList.add('hidden');
+                this.tempItem = null;
+                this.editingItemIndex = null;
+            },
+
+            updateTempItem(field, value) {
+                if (!this.tempItem) return;
+                this.tempItem[field] = value;
+                // live total in modal
+                const totalEl = document.getElementById('item-modal-total');
+                if (totalEl) {
+                    const t = (Number(this.tempItem.qty || 0) * Number(this.tempItem.rate || 0));
+                    totalEl.textContent = this.formatCurrency(t);
+                }
+            },
+
+            async handleTempItemImageUpload(input) {
+                if (!this.tempItem) return;
+                if (input.files && input.files.length > 0) {
+                    const files = Array.from(input.files);
+                    const promises = files.map(file => new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => resolve(e.target.result);
+                        reader.readAsDataURL(file);
+                    }));
+                    const newImgs = (await Promise.all(promises)).filter(x => typeof x === 'string' && x.startsWith('data:image/'));
+                    this.tempItem.images.push(...newImgs);
+                    this.renderItemModal();
+                }
+            },
+
+            removeTempItemImage(imgIndex) {
+                if (!this.tempItem) return;
+                this.tempItem.images.splice(imgIndex, 1);
+                this.renderItemModal();
+            },
+
+            saveItemFromModal() {
+                const item = this.tempItem;
+                if (!item) return;
+
+                // basic validation
+                if (!item.designName || !item.designName.trim()) return alert('Design Name is required');
+                if (!item.fabricId) return alert('Fabric is required');
+
+                item.qty = Number(item.qty || 0);
+                item.rate = Number(item.rate || 0);
+
+                if (this.editingItemIndex !== null) {
+                    this.tempOrder.items[this.editingItemIndex] = item;
+                } else {
+                    this.tempOrder.items.push(item);
+                }
+
+                this.closeItemModal();
+                this.renderOrderFormPage(document.getElementById('content-area'));
+            },
+
+            renderItemModal() {
+                const item = this.tempItem;
+                const fabrics = Store.data.masters.fabrics;
+                const units = Store.data.masters.units;
+
+                const total = (Number(item.qty || 0) * Number(item.rate || 0));
+
+                const html = `
+                    <div class="flex flex-col h-full">
+                        <div class="flex items-center justify-between border-b pb-3 mb-4">
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-900">${this.editingItemIndex !== null ? 'Edit' : 'Add'} Item</h3>
+                                <p class="text-xs text-gray-500">Fill fabric, quantity and rate</p>
+                            </div>
+                            <button onclick="app.closeItemModal()" class="text-gray-500 p-2"><i class="fa-solid fa-times text-xl"></i></button>
+                        </div>
+
+                        <div class="flex-1 overflow-y-auto space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Design Name *</label>
+                                <input type="text" value="${item.designName || ''}" oninput="app.updateTempItem('designName', this.value)" class="w-full border border-gray-300 rounded-lg p-3" placeholder="e.g. Flower print" />
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Fabric *</label>
+                                    <select onchange="app.updateTempItem('fabricId', this.value)" class="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                                        ${fabrics.map(f => `<option value="${f.id}" ${f.id == item.fabricId ? 'selected' : ''}>${f.name}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Color</label>
+                                    <input type="text" value="${item.color || ''}" oninput="app.updateTempItem('color', this.value)" class="w-full border border-gray-300 rounded-lg p-3" placeholder="e.g. Red" />
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Quantity</label>
+                                    <div class="flex border border-gray-300 rounded-lg overflow-hidden">
+                                        <input type="number" value="${item.qty ?? ''}" oninput="app.updateTempItem('qty', this.value)" class="w-full p-3 text-center font-bold outline-none" placeholder="0" />
+                                        <select onchange="app.updateTempItem('unit', this.value)" class="bg-gray-50 border-l border-gray-200 px-2 text-xs font-bold text-gray-700 w-24 shrink-0">
+                                            ${units.map(u => `<option value="${u.name}" ${u.name == item.unit ? 'selected' : ''}>${u.name}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Rate</label>
+                                    <div class="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+                                        <span class="pl-3 text-gray-400 text-sm">₹</span>
+                                        <input type="number" value="${item.rate ?? ''}" oninput="app.updateTempItem('rate', this.value)" class="w-full p-3 font-bold outline-none" placeholder="0" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-4 flex items-center justify-between">
+                                <span class="text-xs font-bold text-indigo-500 uppercase">Item Total</span>
+                                <span id="item-modal-total" class="text-xl font-bold text-indigo-700">${this.formatCurrency(total)}</span>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Images</label>
+                                <div class="flex flex-wrap gap-2">
+                                    ${item.images.map((img, idx) => `
+                                        <div class="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200">
+                                            <img src="${img}" class="w-full h-full object-cover" />
+                                            <button onclick="app.removeTempItemImage(${idx})" class="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center rounded-bl-lg text-xs">
+                                                <i class="fa-solid fa-times"></i>
+                                            </button>
+                                        </div>
+                                    `).join('')}
+                                    <label class="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:text-indigo-500 hover:border-indigo-400 bg-gray-50 cursor-pointer">
+                                        <i class="fa-solid fa-camera text-lg mb-1"></i>
+                                        <span class="text-[8px] font-bold uppercase">Add</span>
+                                        <input type="file" multiple accept="image/*" onchange="app.handleTempItemImageUpload(this)" class="hidden" />
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pt-4 mt-4 border-t">
+                            <button onclick="app.saveItemFromModal()" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg">Save Item</button>
+                        </div>
+                    </div>
+                `;
+
+                this.openModal(html);
             },
 
             updateTempOrder(field, value) {
@@ -1278,53 +1486,13 @@
                 }
             },
 
-            addOrderItem() {
-                const fabrics = Store.data.masters.fabrics;
-                const units = Store.data.masters.units;
-                if (fabrics.length === 0) return alert('No fabrics defined');
-                
-                this.tempOrder.items.push({
-                    designName: '', fabricId: fabrics[0].id, color: '', qty: 0, unit: units[0]?.name || 'Meters', rate: 0, image: null, images: []
-                });
-                this.renderOrderFormPage(document.getElementById('content-area'));
-            },
+            // Legacy inline item editing functions were replaced with a dedicated Item Modal.
+            // Use openItemModal() to add/edit items.
 
             removeOrderItem(index) {
+                if (!this.tempOrder) return;
                 this.tempOrder.items.splice(index, 1);
                 this.renderOrderFormPage(document.getElementById('content-area'));
-            },
-
-            updateOrderItem(index, field, value) {
-                this.tempOrder.items[index][field] = value;
-                
-                // Update footer total dynamically
-                const total = this.calculateOrderTotal(this.tempOrder);
-                const footerTotal = document.querySelector('.fixed.bottom-0 .text-xl.font-bold');
-                if(footerTotal) footerTotal.textContent = this.formatCurrency(total);
-            },
-
-            async handleImageUpload(input, index) {
-                if (input.files && input.files.length > 0) {
-                    if (!this.tempOrder.items[index].images) this.tempOrder.items[index].images = [];
-                    
-                    const files = Array.from(input.files);
-                    const promises = files.map(file => {
-                        return new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onload = (e) => resolve(e.target.result);
-                            reader.readAsDataURL(file);
-                        });
-                    });
-
-                    const newImages = await Promise.all(promises);
-                    this.tempOrder.items[index].images.push(...newImages);
-                    this.renderOrderFormPage(document.getElementById('content-area'));
-                }
-            },
-            
-            removeOrderImage(itemIndex, imgIndex) {
-                 this.tempOrder.items[itemIndex].images.splice(imgIndex, 1);
-                 this.renderOrderFormPage(document.getElementById('content-area'));
             },
 
             async saveOrder(id) {
@@ -1333,18 +1501,74 @@
                 if(o.items.length === 0) return alert('At least one item required');
 
                 this.toggleLoading(true);
-                if (id) {
-                    await Store.update('orders', id, o);
-                } else {
-                    o.id = 'ORD-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Math.random()*1000);
-                    o.createdDate = new Date().toISOString();
-                    await Store.add('orders', o);
+                try {
+                    // Ensure IDs
+                    const isNew = !id;
+                    const orderId = id || ('ORD-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Math.random()*1000));
+
+                    // Deep clone to avoid mutating UI state while uploading
+                    const payload = JSON.parse(JSON.stringify(o));
+                    payload.id = orderId;
+                    payload.updatedDate = new Date().toISOString();
+                    if (isNew) payload.createdDate = new Date().toISOString();
+
+                    // Normalize items + upload images if Firebase is enabled
+                    payload.items = (payload.items || []).map((it, idx) => {
+                        if (!it.images) it.images = [];
+                        // convert qty/rate to numbers
+                        it.qty = Number(it.qty || 0);
+                        it.rate = Number(it.rate || 0);
+                        it.fabricId = it.fabricId ?? '';
+                        it.color = it.color ?? '';
+                        it.designName = it.designName ?? '';
+                        it.unit = it.unit ?? '';
+                        // legacy
+                        if (it.image) {
+                            it.images.push(it.image);
+                            delete it.image;
+                        }
+                        return it;
+                    });
+
+                    if (Store.useFirebase) {
+                        // Upload any base64 images to Firebase Storage and replace with URLs
+                        for (let i = 0; i < payload.items.length; i++) {
+                            const item = payload.items[i];
+                            const outUrls = [];
+                            for (let j = 0; j < (item.images || []).length; j++) {
+                                const img = item.images[j];
+                                // If already a URL, keep it
+                                if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
+                                    outUrls.push(img);
+                                } else {
+                                    const filePath = `orders/${orderId}/item-${i+1}/${Date.now()}-${j}.jpg`;
+                                    const url = await Store.uploadImageDataUrl(img, filePath);
+                                    outUrls.push(url);
+                                }
+                            }
+                            item.images = outUrls;
+                        }
+                    }
+
+                    // Sanitize for Firestore
+                    const cleanPayload = Store.sanitizeForFirestore(payload);
+
+                    if (id) {
+                        await Store.update('orders', id, cleanPayload);
+                    } else {
+                        await Store.add('orders', cleanPayload);
+                    }
+
+                    this.showToast('Order saved successfully');
+                    this.tempOrder = null;
+                    this.editingOrderId = null;
+                    window.location.hash = 'orders';
+                } catch (err) {
+                    console.error(err);
+                    alert('Failed to save order. ' + (err?.message || err));
+                } finally {
+                    this.toggleLoading(false);
                 }
-                this.toggleLoading(false);
-                this.tempOrder = null;
-                this.editingOrderId = null;
-                window.location.hash = 'orders';
-                this.showToast('Order saved successfully');
             },
 
             viewOrder(id) {
