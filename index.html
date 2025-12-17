@@ -1233,17 +1233,28 @@
             },
 
             handleImageUpload(input, index) {
-                if (input.files && input.files[0]) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        // In a real app, you would upload to Storage bucket and get URL
-                        // Here we store base64 string directly in Firestore (limitations apply on size)
-                        // Compressing image is recommended
-                        this.tempOrder.items[index].image = e.target.result;
-                        this.renderOrderForm(Store.getAll('customers'), Store.getAll('brokers'), Store.data.masters.fabrics, Store.data.masters.units, !!this.tempOrder.id);
-                    };
-                    reader.readAsDataURL(input.files[0]);
+                if (input.files && input.files.length > 0) {
+                    // Ensure images array exists
+                    if (!this.tempOrder.items[index].images) this.tempOrder.items[index].images = [];
+                    
+                    Array.from(input.files).forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            this.tempOrder.items[index].images.push(e.target.result);
+                             const fabrics = Store.data.masters.fabrics;
+                             const units = Store.data.masters.units;
+                             this.renderOrderForm(Store.getAll('customers'), Store.getAll('brokers'), fabrics, units, !!this.tempOrder.id);
+                        };
+                        reader.readAsDataURL(file);
+                    });
                 }
+            },
+            
+            removeOrderImage(itemIndex, imgIndex) {
+                 this.tempOrder.items[itemIndex].images.splice(imgIndex, 1);
+                 const fabrics = Store.data.masters.fabrics;
+                 const units = Store.data.masters.units;
+                 this.renderOrderForm(Store.getAll('customers'), Store.getAll('brokers'), fabrics, units, !!this.tempOrder.id);
             },
 
             async saveOrder(id) {
@@ -1310,6 +1321,11 @@
                                             <td class="p-3">
                                                 <div class="font-medium">${item.designName}</div>
                                                 <div class="text-xs text-gray-500">${fab} - ${item.color}</div>
+                                                ${item.images && item.images.length > 0 ? `
+                                                    <div class="flex gap-1 mt-1 flex-wrap">
+                                                         ${item.images.map(img => `<img src="${img}" class="w-10 h-10 object-cover rounded border">`).join('')}
+                                                    </div>
+                                                ` : (item.image ? `<img src="${item.image}" class="w-10 h-10 object-cover rounded border mt-1">` : '')}
                                             </td>
                                             <td class="p-3 text-right">${item.qty} ${item.unit}</td>
                                             <td class="p-3 text-right">${item.rate}</td>
