@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fabric Order Management System</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Firebase SDKs (Compat version for easier standalone usage) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4f46e5',
+                        secondary: '#64748b',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Mobile Optimizations */
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        body { -webkit-tap-highlight-color: transparent; }
+        
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white; }
+            #modal-content { height: auto !important; overflow: visible !important; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800 antialiased h-screen overflow-hidden flex flex-col">
+
+    <!-- ================= AUTH SCREEN ================= -->
+    <div id="auth-screen" class="fixed inset-0 z-50 bg-gray-900 flex items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md relative">
+            <button onclick="app.openDbSettings()" class="absolute top-4 right-4 text-gray-400 hover:text-indigo-600">
+                <i class="fa-solid fa-database"></i>
+            </button>
+            
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 mb-4">
+                    <i class="fa-solid fa-layer-group text-3xl"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-900">Fabric OMS</h1>
+                <p class="text-gray-500 text-sm">Realtime Order Management</p>
+            </div>
+            
+            <!-- Connection Status Indicator -->
+            <div id="db-status-badge" class="flex justify-center mb-4">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                    <span class="w-2 h-2 mr-1 bg-gray-400 rounded-full"></span> Local Storage
+                </span>
+            </div>
+
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Username</label>
+                    <input type="text" id="username" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-3 border" placeholder="admin" value="admin">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-3 border" placeholder="admin" value="admin">
+                </div>
+                <div id="login-error" class="text-red-500 text-sm hidden">Invalid credentials</div>
+                <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Sign In
+                </button>
+            </form>
+            <div class="mt-4 text-center text-xs text-gray-400">
+                Tap the database icon to connect Cloud DB
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= APP LAYOUT ================= -->
+    <div id="app-layout" class="flex-1 flex h-full overflow-hidden hidden relative">
+        
+        <!-- Sidebar (Desktop) -->
+        <aside class="w-64 bg-slate-800 text-white flex-shrink-0 hidden md:flex flex-col transition-all duration-300" id="sidebar">
+            <div class="p-4 border-b border-slate-700 flex items-center gap-3">
+                <i class="fa-solid fa-layer-group text-indigo-400 text-xl"></i>
+                <span class="font-bold text-lg tracking-wide">Fabric OMS</span>
+            </div>
+            <nav class="flex-1 overflow-y-auto py-4 space-y-1 px-2">
+                <a href="#dashboard" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="dashboard">
+                    <i class="fa-solid fa-chart-line w-6 mr-2 text-center"></i> Dashboard
+                </a>
+                <a href="#orders" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="orders">
+                    <i class="fa-solid fa-cart-shopping w-6 mr-2 text-center"></i> Orders
+                </a>
+                <a href="#customers" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="customers">
+                    <i class="fa-solid fa-users w-6 mr-2 text-center"></i> Customers
+                </a>
+                <a href="#brokers" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="brokers">
+                    <i class="fa-solid fa-user-tie w-6 mr-2 text-center"></i> Brokers
+                </a>
+                <a href="#masters" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="masters">
+                    <i class="fa-solid fa-database w-6 mr-2 text-center"></i> Masters
+                </a>
+                <a href="#reports" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="reports">
+                    <i class="fa-solid fa-file-invoice w-6 mr-2 text-center"></i> Reports
+                </a>
+            </nav>
+            <div class="p-4 border-t border-slate-700 space-y-4">
+                <button onclick="app.openDbSettings()" class="flex items-center w-full text-sm font-medium text-gray-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-gear w-6 mr-2"></i> Settings
+                </button>
+                <button onclick="app.logout()" class="flex items-center w-full text-sm font-medium text-gray-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-right-from-bracket w-6 mr-2"></i> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col min-w-0 overflow-hidden bg-gray-50 relative">
+            
+            <!-- Header (Mobile Only) -->
+            <header class="bg-white shadow-sm z-10 p-3 flex items-center justify-between md:hidden h-14">
+                <div class="flex items-center gap-2">
+                    <span class="font-bold text-lg text-gray-800">Fabric OMS</span>
+                    <span id="mobile-db-indicator" class="w-2 h-2 rounded-full bg-gray-400"></span>
+                </div>
+                <button onclick="app.logout()" class="text-gray-500 p-2">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                </button>
+            </header>
+
+            <!-- Scrollable Content Area -->
+            <main id="content-area" class="flex-1 overflow-y-auto p-4 pb-24 md:p-8 md:pb-8">
+                <!-- Content injected via JS -->
+            </main>
+
+            <!-- Loading Overlay -->
+            <div id="loading-overlay" class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-20 hidden">
+                <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+            </div>
+
+            <!-- Bottom Mobile Navigation -->
+            <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] h-16">
+                <a href="#dashboard" class="mobile-nav-link flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-indigo-600 transition-colors" data-target="dashboard">
+                    <i class="fa-solid fa-chart-line text-xl mb-1"></i>
+                    <span class="text-[10px] font-medium">Home</span>
+                </a>
+                <a href="#orders" class="mobile-nav-link flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-indigo-600 transition-colors" data-target="orders">
+                    <i class="fa-solid fa-cart-shopping text-xl mb-1"></i>
+                    <span class="text-[10px] font-medium">Orders</span>
+                </a>
+                
+                <!-- Floating Action Button for New Order -->
+                <div class="relative -top-6">
+                    <button onclick="app.openOrderModal()" class="bg-indigo-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:bg-indigo-700 active:scale-95 transition-transform border-4 border-gray-50">
+                        <i class="fa-solid fa-plus text-2xl"></i>
+                    </button>
+                </div>
+
+                <a href="#customers" class="mobile-nav-link flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-indigo-600 transition-colors" data-target="customers">
+                    <i class="fa-solid fa-users text-xl mb-1"></i>
+                    <span class="text-[10px] font-medium">Cust</span>
+                </a>
+                <button onclick="app.toggleMobileMenu()" class="mobile-nav-link flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-indigo-600 transition-colors">
+                    <i class="fa-solid fa-bars text-xl mb-1"></i>
+                    <span class="text-[10px] font-medium">Menu</span>
+                </button>
+            </nav>
+
+            <!-- Mobile More Menu (Slide up) -->
+            <div id="mobile-more-menu" class="fixed inset-0 z-50 hidden md:hidden">
+                <div class="absolute inset-0 bg-gray-900 bg-opacity-50 transition-opacity" onclick="app.toggleMobileMenu()"></div>
+                <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-xl shadow-xl transform transition-transform duration-300 pb-safe animate-slide-up">
+                    <div class="p-4 border-b flex justify-between items-center">
+                        <h3 class="font-bold text-gray-800">Menu</h3>
+                        <button onclick="app.toggleMobileMenu()" class="text-gray-500"><i class="fa-solid fa-times text-xl"></i></button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 p-6">
+                        <a href="#brokers" onclick="app.toggleMobileMenu()" class="flex flex-col items-center text-gray-600 hover:text-indigo-600">
+                            <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mb-2 text-blue-600">
+                                <i class="fa-solid fa-user-tie text-xl"></i>
+                            </div>
+                            <span class="text-xs font-medium">Brokers</span>
+                        </a>
+                        <a href="#masters" onclick="app.toggleMobileMenu()" class="flex flex-col items-center text-gray-600 hover:text-indigo-600">
+                            <div class="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center mb-2 text-purple-600">
+                                <i class="fa-solid fa-database text-xl"></i>
+                            </div>
+                            <span class="text-xs font-medium">Masters</span>
+                        </a>
+                        <a href="#reports" onclick="app.toggleMobileMenu()" class="flex flex-col items-center text-gray-600 hover:text-indigo-600">
+                            <div class="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mb-2 text-green-600">
+                                <i class="fa-solid fa-file-invoice text-xl"></i>
+                            </div>
+                            <span class="text-xs font-medium">Reports</span>
+                        </a>
+                         <button onclick="app.openDbSettings(); app.toggleMobileMenu()" class="flex flex-col items-center text-gray-600 hover:text-indigo-600">
+                            <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-2 text-gray-600">
+                                <i class="fa-solid fa-gear text-xl"></i>
+                            </div>
+                            <span class="text-xs font-medium">Settings</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODALS ================= -->
+    <div id="modal-container" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true">
+        <div class="absolute inset-0 bg-gray-900 bg-opacity-75 transition-opacity backdrop-blur-sm"></div>
+        <!-- Modal Panel -->
+        <div class="absolute inset-0 md:inset-auto md:top-1/2 md:left-1/2 md:transform md:-translate-x-1/2 md:-translate-y-1/2 md:max-w-4xl md:w-full md:h-auto md:max-h-[90vh] bg-white md:rounded-lg shadow-xl overflow-hidden flex flex-col h-full">
+            <div class="flex-1 overflow-y-auto p-4 md:p-6" id="modal-content">
+                <!-- Content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= TOAST NOTIFICATION ================= -->
+    <div id="toast" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg opacity-0 transition-opacity duration-300 z-[60] text-sm pointer-events-none whitespace-nowrap">
+        Notification
+    </div>
+
+    <!-- ================= JAVASCRIPT LOGIC ================= -->
+    <script>
+        // --- DATA STORE (Hybrid: LocalStorage + Firebase) ---
+        const Store = {
+            dbName: 'fabric_oms_db',
+            useFirebase: false,
+            db: null,
+            listeners: [],
+            
+            // Local state mirror (kept in sync with DB)
+            data: {
+                users: [{username: 'admin', password: 'admin'}],
+                customers: [],
+                brokers: [],
+                orders: [],
+                masters: {
+                    fabrics: [
+                        {id: 1, name: 'Cotton 60s', description: 'Pure Cotton', status: 'Active'},
+                        {id: 2, name: 'Rayon 14kg', description: 'Heavy Rayon', status: 'Active'},
+                        {id: 3, name: 'Polyester', description: 'Synthetic', status: 'Active'}
+                    ],
+                    units: [
+                        {id: 1, name: 'Meters'},
+                        {id: 2, name: 'Yards'},
+                        {id: 3, name: 'Kg'}
+                    ]
+                }
+            },
+
+            async init() {
+                // 1. Load Local Config
+                const firebaseConfigStr = localStorage.getItem('oms_firebase_config');
+                
+                if (firebaseConfigStr) {
+                    try {
+                        const firebaseConfig = JSON.parse(firebaseConfigStr);
+                        if (!firebase.apps.length) {
+                            firebase.initializeApp(firebaseConfig);
+                        }
+                        this.db = firebase.firestore();
+                        this.db.enablePersistence().catch(err => console.log('Persistence error', err)); // Offline support
+                        this.useFirebase = true;
+                        this.updateStatusUI(true);
+                        console.log('Firebase Initialized');
+                        
+                        // Setup Realtime Listeners
+                        this.setupListeners();
+                    } catch (e) {
+                        console.error("Firebase Init Failed", e);
+                        this.useFirebase = false;
+                        this.updateStatusUI(false);
+                        this.loadLocal();
+                    }
+                } else {
+                    this.useFirebase = false;
+                    this.updateStatusUI(false);
+                    this.loadLocal();
+                }
+            },
+
+            updateStatusUI(isOnline) {
+                const badge = document.getElementById('db-status-badge');
+                const dot = document.getElementById('mobile-db-indicator');
+                
+                if(isOnline) {
+                    if(badge) badge.innerHTML = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"><span class="w-2 h-2 mr-1 bg-green-400 rounded-full animate-pulse"></span> Cloud DB Live</span>`;
+                    if(dot) dot.classList.replace('bg-gray-400', 'bg-green-500');
+                } else {
+                    if(badge) badge.innerHTML = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"><span class="w-2 h-2 mr-1 bg-gray-400 rounded-full"></span> Local Storage</span>`;
+                    if(dot) dot.classList.replace('bg-green-500', 'bg-gray-400');
+                }
+            },
+
+            loadLocal() {
+                const stored = localStorage.getItem(this.dbName);
+                if (stored) {
+                    this.data = JSON.parse(stored);
+                } else {
+                    localStorage.setItem(this.dbName, JSON.stringify(this.data));
+                }
+            },
+
+            setupListeners() {
+                // Listen to collections and sync to local this.data
+                const collections = ['customers', 'brokers', 'orders'];
+                
+                collections.forEach(col => {
+                    const unsub = this.db.collection(col).onSnapshot(snapshot => {
+                        const items = [];
+                        snapshot.forEach(doc => items.push({ ...doc.data(), id: doc.id })); // Use doc.id as ID
+                        this.data[col] = items;
+                        console.log(`Synced ${col}: ${items.length} items`);
+                        app.refreshCurrentView();
+                    });
+                    this.listeners.push(unsub);
+                });
+
+                // Masters is a single doc usually, but here we treat it simply
+                // For simplicity in this demo, masters are stored in a 'settings' collection
+                this.db.collection('settings').doc('masters').onSnapshot(doc => {
+                    if(doc.exists) {
+                        this.data.masters = doc.data();
+                        app.refreshCurrentView();
+                    } else {
+                        // Create default if missing
+                        this.db.collection('settings').doc('masters').set(this.data.masters);
+                    }
+                });
+            },
+
+            // --- CRUD Operations ---
+            getAll(collection) { return this.data[collection] || []; },
+            
+            getById(collection, id) { 
+                return this.data[collection].find(x => x.id == id); 
+            },
+
+            async add(collection, item) { 
+                if (this.useFirebase) {
+                    // Remove ID if it was manually generated (Firestore auto-ID is better, but we stick to app logic)
+                    // We use custom IDs for orders/customers as defined in app logic, so we use .set() on specific doc or .add()
+                    const docId = item.id;
+                    await this.db.collection(collection).doc(docId.toString()).set(item);
+                } else {
+                    this.data[collection].push(item); 
+                    this.saveLocal();
+                }
+            },
+
+            async update(collection, id, newData) {
+                if (this.useFirebase) {
+                    await this.db.collection(collection).doc(id.toString()).update(newData);
+                } else {
+                    const idx = this.data[collection].findIndex(x => x.id == id);
+                    if (idx !== -1) {
+                        this.data[collection][idx] = { ...this.data[collection][idx], ...newData };
+                        this.saveLocal();
+                    }
+                }
+            },
+
+            async delete(collection, id) {
+                if (this.useFirebase) {
+                    await this.db.collection(collection).doc(id.toString()).delete();
+                } else {
+                    this.data[collection] = this.data[collection].filter(x => x.id != id);
+                    this.saveLocal();
+                }
+            },
+            
+            // Special handler for masters structure
+            async saveMasters() {
+                if(this.useFirebase) {
+                    await this.db.collection('settings').doc('masters').set(this.data.masters);
+                } else {
+                    this.saveLocal();
+                }
+            },
+
+            saveLocal() {
+                localStorage.setItem(this.dbName, JSON.stringify(this.data));
+                app.refreshCurrentView(); // Trigger re-render for local mode
+            }
+        };
+
+        // --- APP CONTROLLER ---
+        const app = {
+            currentUser: null,
+            currentRoute: 'dashboard',
+            
+            toggleMobileMenu() {
+                const menu = document.getElementById('mobile-more-menu');
+                if (menu.classList.contains('hidden')) {
+                    menu.classList.remove('hidden');
+                } else {
+                    menu.classList.add('hidden');
+                }
+            },
+
+            init() {
+                Store.init();
+                this.checkAuth();
+                window.addEventListener('hashchange', () => this.handleRoute());
+            },
+
+            refreshCurrentView() {
+                if(this.currentUser) {
+                    this.handleRoute();
+                }
+            },
+
+            checkAuth() {
+                const session = sessionStorage.getItem('oms_session');
+                if (session) {
+                    this.currentUser = session;
+                    document.getElementById('auth-screen').classList.add('hidden');
+                    document.getElementById('app-layout').classList.remove('hidden');
+                    this.handleRoute();
+                } else {
+                    document.getElementById('auth-screen').classList.remove('hidden');
+                    document.getElementById('app-layout').classList.add('hidden');
+                }
+            },
+
+            login(username, password) {
+                // Hardcoded admin for simplicity as users aren't in Firestore yet
+                if (username === 'admin' && password === 'admin') {
+                    sessionStorage.setItem('oms_session', username);
+                    this.checkAuth();
+                } else {
+                    document.getElementById('login-error').classList.remove('hidden');
+                }
+            },
+
+            logout() {
+                sessionStorage.removeItem('oms_session');
+                window.location.reload();
+            },
+
+            handleRoute() {
+                const hash = window.location.hash.substring(1) || 'dashboard';
+                this.currentRoute = hash;
+                
+                // Update Desktop Sidebar UI
+                document.querySelectorAll('.nav-link').forEach(el => {
+                    if(el.dataset.target === hash) {
+                        el.classList.add('bg-slate-700', 'text-white');
+                        el.classList.remove('text-gray-300');
+                    } else {
+                        el.classList.remove('bg-slate-700', 'text-white');
+                        el.classList.add('text-gray-300');
+                    }
+                });
+
+                // Update Mobile Nav UI
+                document.querySelectorAll('.mobile-nav-link').forEach(el => {
+                    const target = el.dataset.target;
+                    const isMoreMenu = !target; 
+                    const secondaryRoutes = ['brokers', 'masters', 'reports'];
+
+                    if(target === hash || (isMoreMenu && secondaryRoutes.includes(hash))) {
+                        el.classList.add('text-indigo-600');
+                        el.classList.remove('text-gray-400');
+                    } else {
+                        el.classList.remove('text-indigo-600');
+                        el.classList.add('text-gray-400');
+                    }
+                });
+
+                const content = document.getElementById('content-area');
+                
+                switch(hash) {
+                    case 'dashboard': this.renderDashboard(content); break;
+                    case 'orders': this.renderOrders(content); break;
+                    case 'customers': this.renderCustomers(content); break;
+                    case 'brokers': this.renderBrokers(content); break;
+                    case 'masters': this.renderMasters(content); break;
+                    case 'reports': this.renderReports(content); break;
+                    default: this.renderDashboard(content); break;
+                }
+            },
+
+            // --- VIEW RENDERERS ---
+
+            renderDashboard(container) {
+                const orders = Store.getAll('orders');
+                const customers = Store.getAll('customers');
+                
+                const stats = {
+                    totalOrders: orders.length,
+                    pending: orders.filter(o => o.status === 'New' || o.status === 'In Progress').length,
+                    completed: orders.filter(o => o.status === 'Completed').length,
+                    customers: customers.length
+                };
+
+                const recentOrders = [...orders].sort((a,b) => new Date(b.createdDate) - new Date(a.createdDate)).slice(0, 5);
+
+                container.innerHTML = `
+                    <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-8">
+                        <div class="bg-white p-4 rounded-lg shadow-sm border-l-4 border-indigo-500">
+                            <div class="text-gray-500 text-xs md:text-sm">Total Orders</div>
+                            <div class="text-2xl md:text-3xl font-bold">${stats.totalOrders}</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow-sm border-l-4 border-yellow-500">
+                            <div class="text-gray-500 text-xs md:text-sm">Pending</div>
+                            <div class="text-2xl md:text-3xl font-bold">${stats.pending}</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow-sm border-l-4 border-green-500">
+                            <div class="text-gray-500 text-xs md:text-sm">Completed</div>
+                            <div class="text-2xl md:text-3xl font-bold">${stats.completed}</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-500">
+                            <div class="text-gray-500 text-xs md:text-sm">Customers</div>
+                            <div class="text-2xl md:text-3xl font-bold">${stats.customers}</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                        <div class="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+                            <h3 class="font-bold text-gray-700">Recent Orders</h3>
+                            <button onclick="window.location.hash='orders'" class="text-indigo-600 text-sm hover:underline">View All</button>
+                        </div>
+                        <!-- Mobile List View -->
+                        <div class="md:hidden divide-y divide-gray-100">
+                             ${recentOrders.map(o => `
+                                <div class="p-4" onclick="app.viewOrder('${o.id}')">
+                                    <div class="flex justify-between mb-1">
+                                        <span class="font-medium">#${o.id.split('-').pop()}</span>
+                                        <span class="text-xs px-2 py-0.5 rounded-full ${this.getStatusColor(o.status)}">${o.status}</span>
+                                    </div>
+                                    <div class="flex justify-between text-sm text-gray-500">
+                                        <span>${o.customerName || 'Unknown'}</span>
+                                        <span>${this.formatCurrency(this.calculateOrderTotal(o))}</span>
+                                    </div>
+                                </div>
+                             `).join('')}
+                              ${recentOrders.length === 0 ? '<div class="p-4 text-center text-gray-400">No recent orders</div>' : ''}
+                        </div>
+                        <!-- Desktop Table View -->
+                        <div class="hidden md:block overflow-x-auto">
+                            <table class="min-w-full text-left text-sm whitespace-nowrap">
+                                <thead class="bg-gray-50 text-xs font-semibold text-gray-600 uppercase">
+                                    <tr>
+                                        <th class="px-6 py-3">ID</th>
+                                        <th class="px-6 py-3">Customer</th>
+                                        <th class="px-6 py-3">Date</th>
+                                        <th class="px-6 py-3">Status</th>
+                                        <th class="px-6 py-3">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    ${recentOrders.map(o => `
+                                        <tr class="hover:bg-gray-50 cursor-pointer" onclick="app.viewOrder('${o.id}')">
+                                            <td class="px-6 py-3 font-medium text-gray-900">${o.id}</td>
+                                            <td class="px-6 py-3">${o.customerName || 'Unknown'}</td>
+                                            <td class="px-6 py-3">${o.date}</td>
+                                            <td class="px-6 py-3"><span class="px-2 py-1 rounded-full text-xs ${this.getStatusColor(o.status)}">${o.status}</span></td>
+                                            <td class="px-6 py-3">${this.formatCurrency(this.calculateOrderTotal(o))}</td>
+                                        </tr>
+                                    `).join('')}
+                                    ${recentOrders.length === 0 ? '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-400">No recent orders</td></tr>' : ''}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            },
+
+            renderCustomers(container) {
+                const customers = Store.getAll('customers');
+                container.innerHTML = `
+                    <div class="flex justify-between items-center mb-4 md:mb-6">
+                        <h2 class="text-2xl font-bold">Customers</h2>
+                        <button onclick="app.openCustomerModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm flex items-center">
+                            <i class="fa-solid fa-plus mr-1"></i> <span class="hidden md:inline">Add Customer</span><span class="md:hidden">Add</span>
+                        </button>
+                    </div>
+
+                    <!-- Mobile Card View -->
+                    <div class="grid grid-cols-1 md:hidden gap-3">
+                        ${customers.map(c => `
+                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <div class="font-bold text-gray-900">${c.name}</div>
+                                        <div class="text-sm text-gray-500">${c.company || 'Personal'}</div>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button onclick="app.openCustomerModal('${c.id}')" class="text-blue-600 p-2 bg-blue-50 rounded-full"><i class="fa-solid fa-pen text-xs"></i></button>
+                                        <button onclick="app.deleteItem('customers', '${c.id}')" class="text-red-600 p-2 bg-red-50 rounded-full"><i class="fa-solid fa-trash text-xs"></i></button>
+                                    </div>
+                                </div>
+                                <div class="mt-3 grid grid-cols-2 gap-2 text-sm text-gray-600">
+                                    <div class="flex items-center gap-2"><i class="fa-solid fa-phone text-gray-400"></i> <a href="tel:${c.phone}">${c.phone}</a></div>
+                                    <div class="flex items-center gap-2"><i class="fa-solid fa-location-dot text-gray-400"></i> ${c.city || 'N/A'}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                        ${customers.length === 0 ? '<div class="text-center text-gray-400 py-8 bg-white rounded">No customers found</div>' : ''}
+                    </div>
+
+                    <!-- Desktop Table View -->
+                    <div class="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden">
+                        <table class="min-w-full text-left text-sm whitespace-nowrap">
+                            <thead class="bg-gray-50 text-xs font-semibold text-gray-600 uppercase border-b">
+                                <tr>
+                                    <th class="px-6 py-3">Name</th>
+                                    <th class="px-6 py-3">Phone</th>
+                                    <th class="px-6 py-3">Company</th>
+                                    <th class="px-6 py-3">City</th>
+                                    <th class="px-6 py-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                ${customers.map(c => `
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-6 py-3 font-medium text-gray-900">${c.name}</td>
+                                        <td class="px-6 py-3">${c.phone}</td>
+                                        <td class="px-6 py-3">${c.company || '-'}</td>
+                                        <td class="px-6 py-3">${c.city || '-'}</td>
+                                        <td class="px-6 py-3 text-right">
+                                            <button onclick="app.openCustomerModal('${c.id}')" class="text-blue-600 hover:text-blue-900 mr-3"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="app.deleteItem('customers', '${c.id}')" class="text-red-600 hover:text-red-900"><i class="fa-solid fa-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                                ${customers.length === 0 ? '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-400">No customers found</td></tr>' : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            },
+
+            renderBrokers(container) {
+                const brokers = Store.getAll('brokers');
+                container.innerHTML = `
+                    <div class="flex justify-between items-center mb-4 md:mb-6">
+                        <h2 class="text-2xl font-bold">Brokers</h2>
+                        <button onclick="app.openBrokerModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm">
+                            <i class="fa-solid fa-plus mr-1"></i> Add Broker
+                        </button>
+                    </div>
+
+                    <!-- Mobile List -->
+                    <div class="md:hidden space-y-3">
+                        ${brokers.map(b => `
+                            <div class="bg-white p-4 rounded-lg shadow-sm flex justify-between items-center">
+                                <div>
+                                    <div class="font-bold">${b.name}</div>
+                                    <div class="text-sm text-gray-500"><i class="fa-solid fa-phone mr-1"></i> ${b.phone}</div>
+                                    <div class="text-xs bg-green-100 text-green-800 inline-block px-2 py-0.5 rounded mt-1">Comm: ${b.commission || 0}%</div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="app.openBrokerModal('${b.id}')" class="text-blue-600 p-2"><i class="fa-solid fa-pen"></i></button>
+                                    <button onclick="app.deleteItem('brokers', '${b.id}')" class="text-red-600 p-2"><i class="fa-solid fa-trash"></i></button>
+                                </div>
+                            </div>
+                        `).join('')}
+                        ${brokers.length === 0 ? '<div class="text-center text-gray-400 py-8 bg-white rounded">No brokers found</div>' : ''}
+                    </div>
+
+                    <!-- Desktop Table View -->
+                    <div class="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden">
+                        <table class="min-w-full text-left text-sm whitespace-nowrap">
+                            <thead class="bg-gray-50 text-xs font-semibold text-gray-600 uppercase border-b">
+                                <tr>
+                                    <th class="px-6 py-3">Name</th>
+                                    <th class="px-6 py-3">Phone</th>
+                                    <th class="px-6 py-3">Commission</th>
+                                    <th class="px-6 py-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                ${brokers.map(b => `
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-6 py-3 font-medium text-gray-900">${b.name}</td>
+                                        <td class="px-6 py-3">${b.phone}</td>
+                                        <td class="px-6 py-3">${b.commission || 0}%</td>
+                                        <td class="px-6 py-3 text-right">
+                                            <button onclick="app.openBrokerModal('${b.id}')" class="text-blue-600 hover:text-blue-900 mr-3"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="app.deleteItem('brokers', '${b.id}')" class="text-red-600 hover:text-red-900"><i class="fa-solid fa-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                                ${brokers.length === 0 ? '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-400">No brokers found</td></tr>' : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            },
+
+            renderMasters(container) {
+                const fabrics = Store.data.masters.fabrics;
+                const units = Store.data.masters.units;
+                
+                container.innerHTML = `
+                    <h2 class="text-2xl font-bold mb-6">Masters</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Fabrics -->
+                        <div class="bg-white rounded-lg shadow-sm p-4">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold">Fabric Types</h3>
+                                <button onclick="app.addMaster('fabrics')" class="text-indigo-600 text-sm font-bold">+ Add</button>
+                            </div>
+                            <ul class="divide-y divide-gray-100">
+                                ${fabrics.map(f => `
+                                    <li class="py-3 flex justify-between items-center">
+                                        <span>${f.name}</span>
+                                        <button onclick="app.deleteMaster('fabrics', ${f.id})" class="text-red-400 p-1"><i class="fa-solid fa-trash"></i></button>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                        <!-- Units -->
+                        <div class="bg-white rounded-lg shadow-sm p-4">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold">Units</h3>
+                                <button onclick="app.addMaster('units')" class="text-indigo-600 text-sm font-bold">+ Add</button>
+                            </div>
+                            <ul class="divide-y divide-gray-100">
+                                ${units.map(u => `
+                                    <li class="py-3 flex justify-between items-center">
+                                        <span>${u.name}</span>
+                                        <button onclick="app.deleteMaster('units', ${u.id})" class="text-red-400 p-1"><i class="fa-solid fa-trash"></i></button>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            },
+
+            renderOrders(container) {
+                const orders = Store.getAll('orders').sort((a,b) => new Date(b.createdDate) - new Date(a.createdDate));
+                
+                container.innerHTML = `
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 md:mb-6 gap-3">
+                        <h2 class="text-2xl font-bold">Orders</h2>
+                        <div class="flex gap-2 w-full md:w-auto">
+                            <div class="relative flex-1 md:w-64">
+                                <i class="fa-solid fa-search absolute left-3 top-3 text-gray-400 text-sm"></i>
+                                <input type="text" placeholder="Search Order..." onkeyup="app.filterOrders(this.value)" class="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            </div>
+                            <button onclick="app.openOrderModal()" class="hidden md:flex bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm items-center whitespace-nowrap">
+                                <i class="fa-solid fa-plus mr-1"></i> New Order
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Mobile Card View -->
+                    <div class="md:hidden space-y-4 pb-8" id="orders-list-mobile">
+                        ${orders.map(o => `
+                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 search-item" data-search="${o.id} ${o.customerName}">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div>
+                                        <div class="font-bold text-lg">#${o.id.split('-').pop()}</div>
+                                        <div class="text-xs text-gray-400">${o.date}</div>
+                                    </div>
+                                    <span class="px-2 py-1 rounded-full text-[10px] font-bold uppercase ${this.getStatusColor(o.status)}">${o.status}</span>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="font-medium text-gray-800">${o.customerName}</div>
+                                    <div class="text-sm text-gray-500">${o.items.length} Items • ${o.priority}</div>
+                                </div>
+                                <div class="flex justify-between items-center border-t border-gray-100 pt-3">
+                                    <div class="font-bold text-gray-900 text-lg">${this.formatCurrency(this.calculateOrderTotal(o))}</div>
+                                    <div class="flex gap-4">
+                                        <button onclick="app.viewOrder('${o.id}')" class="text-gray-500"><i class="fa-solid fa-eye text-lg"></i></button>
+                                        <button onclick="app.openOrderModal('${o.id}')" class="text-blue-600"><i class="fa-solid fa-pen text-lg"></i></button>
+                                        <button onclick="app.deleteItem('orders', '${o.id}')" class="text-red-500"><i class="fa-solid fa-trash text-lg"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                        ${orders.length === 0 ? '<div class="text-center text-gray-400 py-8">No orders found</div>' : ''}
+                    </div>
+
+                    <!-- Desktop Table View -->
+                    <div class="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden">
+                        <table class="min-w-full text-left text-sm whitespace-nowrap" id="orders-table">
+                            <thead class="bg-gray-50 text-xs font-semibold text-gray-600 uppercase border-b">
+                                <tr>
+                                    <th class="px-6 py-3">ID</th>
+                                    <th class="px-6 py-3">Date</th>
+                                    <th class="px-6 py-3">Customer</th>
+                                    <th class="px-6 py-3">Items</th>
+                                    <th class="px-6 py-3">Total</th>
+                                    <th class="px-6 py-3">Status</th>
+                                    <th class="px-6 py-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                ${orders.map(o => `
+                                    <tr class="hover:bg-gray-50 search-item" data-search="${o.id} ${o.customerName}">
+                                        <td class="px-6 py-3 font-medium text-gray-900">${o.id}</td>
+                                        <td class="px-6 py-3">${o.date}</td>
+                                        <td class="px-6 py-3">${o.customerName}</td>
+                                        <td class="px-6 py-3">${o.items.length}</td>
+                                        <td class="px-6 py-3">${this.formatCurrency(this.calculateOrderTotal(o))}</td>
+                                        <td class="px-6 py-3"><span class="px-2 py-1 rounded-full text-xs ${this.getStatusColor(o.status)}">${o.status}</span></td>
+                                        <td class="px-6 py-3 text-right">
+                                            <button onclick="app.viewOrder('${o.id}')" class="text-gray-600 hover:text-gray-900 mr-2"><i class="fa-solid fa-eye"></i></button>
+                                            <button onclick="app.openOrderModal('${o.id}')" class="text-blue-600 hover:text-blue-900 mr-2"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="app.deleteItem('orders', '${o.id}')" class="text-red-600 hover:text-red-900"><i class="fa-solid fa-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                                ${orders.length === 0 ? '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-400">No orders found</td></tr>' : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            },
+
+            renderReports(container) {
+                container.innerHTML = `
+                    <h2 class="text-2xl font-bold mb-6">Reports</h2>
+                    <div class="bg-white p-6 rounded-lg shadow-sm">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Report Type</label>
+                                <select id="report-type" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-3 bg-white">
+                                    <option value="all">All Orders</option>
+                                    <option value="pending">Pending Orders</option>
+                                    <option value="completed">Completed Orders</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button onclick="app.generateReport()" class="bg-indigo-600 text-white px-4 py-3 rounded-md hover:bg-indigo-700 shadow-sm w-full font-medium">Generate Report</button>
+                            </div>
+                        </div>
+                        <div id="report-result" class="overflow-x-auto border-t pt-4 hidden"></div>
+                    </div>
+                `;
+            },
+
+            // --- MODALS ---
+            openModal(contentHtml) {
+                const modal = document.getElementById('modal-container');
+                document.getElementById('modal-content').innerHTML = contentHtml;
+                modal.classList.remove('hidden');
+            },
+
+            closeModal() {
+                document.getElementById('modal-container').classList.add('hidden');
+                this.tempOrder = null;
+            },
+
+            // Database Settings Modal
+            openDbSettings() {
+                const config = localStorage.getItem('oms_firebase_config') || '';
+                
+                const html = `
+                    <div class="bg-white h-full md:h-auto">
+                        <div class="flex justify-between items-center border-b pb-3 mb-4">
+                            <h3 class="text-xl font-bold text-gray-900">Database Connection</h3>
+                            <button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fa-solid fa-times text-xl"></i></button>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="bg-blue-50 p-4 rounded text-sm text-blue-800">
+                                <i class="fa-solid fa-info-circle mr-1"></i> Paste your Firebase Configuration JSON below to enable Realtime Cloud Storage. 
+                            </div>
+                            <textarea id="db-config" rows="8" class="w-full border rounded p-3 text-xs font-mono bg-gray-50" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "..."}'>${config}</textarea>
+                            
+                            <div class="flex flex-col md:flex-row gap-3 pt-4">
+                                <button onclick="app.saveDbSettings()" class="w-full bg-indigo-600 text-white py-3 rounded hover:bg-indigo-700 font-medium">Connect & Save</button>
+                                <button onclick="app.clearDbSettings()" class="w-full bg-red-100 text-red-700 py-3 rounded hover:bg-red-200">Disconnect (Use Local)</button>
+                            </div>
+                            
+                            <!-- Help Section -->
+                            <div class="mt-6 border-t pt-4">
+                                <h4 class="font-bold text-sm text-gray-700 mb-2">How to configure Firebase:</h4>
+                                <ol class="list-decimal pl-4 space-y-2 text-xs text-gray-600">
+                                    <li>Go to <a href="https://console.firebase.google.com" target="_blank" class="text-indigo-600 underline">Firebase Console</a> and create a project.</li>
+                                    <li><strong>Get Config:</strong> Project Settings > General > Your apps > Add Web App. Copy the object inside <code>const firebaseConfig = { ... }</code>.</li>
+                                    <li><strong>Setup Database:</strong> Go to "Firestore Database" in the sidebar and click "Create Database".</li>
+                                    <li><strong>Set Rules:</strong> Go to the "Rules" tab in Firestore and paste the code below to allow access:</li>
+                                </ol>
+                                <div class="bg-gray-800 text-gray-200 p-2 rounded mt-2 text-xs font-mono select-all">
+                                    rules_version = '2';<br>
+                                    service cloud.firestore {<br>
+                                      &nbsp;&nbsp;match /databases/{database}/documents {<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;match /{document=**} {<br>
+                                          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if true;<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+                                      &nbsp;&nbsp;}<br>
+                                    }
+                                </div>
+                                <p class="text-[10px] text-red-500 mt-2">* Note: These rules are for testing/internal use only as they allow public read/write access.</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                this.openModal(html);
+            },
+
+            saveDbSettings() {
+                const configStr = document.getElementById('db-config').value;
+                try {
+                    JSON.parse(configStr); // Validate JSON
+                    localStorage.setItem('oms_firebase_config', configStr);
+                    this.showToast('Configuration Saved. Reloading...');
+                    setTimeout(() => window.location.reload(), 1000);
+                } catch(e) {
+                    alert('Invalid JSON Configuration');
+                }
+            },
+
+            clearDbSettings() {
+                if(confirm('Disconnect from Cloud DB? Data will be served from this device only.')) {
+                    localStorage.removeItem('oms_firebase_config');
+                    window.location.reload();
+                }
+            },
+
+            // Customers Modal
+            openCustomerModal(id = null) {
+                const c = id ? Store.getById('customers', id) : { name:'', phone:'', company:'', email:'', city:'', address:'' };
+                const isEdit = !!id;
+                
+                const formHtml = `
+                    <div class="flex flex-col h-full">
+                        <div class="flex justify-between items-center border-b pb-3 mb-4">
+                            <h3 class="text-lg font-bold text-gray-900">${isEdit ? 'Edit' : 'New'} Customer</h3>
+                            <button onclick="app.closeModal()" class="text-gray-500 p-2"><i class="fa-solid fa-times text-xl"></i></button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto pr-1">
+                            <form id="cust-form" onsubmit="event.preventDefault(); app.saveCustomer('${id || ''}')" class="space-y-4">
+                                <div><label class="block text-xs font-bold text-gray-500 uppercase">Name *</label><input type="text" id="c-name" value="${c.name || ''}" required class="mt-1 block w-full border border-gray-300 rounded-md p-3"></div>
+                                <div><label class="block text-xs font-bold text-gray-500 uppercase">Phone *</label><input type="tel" id="c-phone" value="${c.phone || ''}" required class="mt-1 block w-full border border-gray-300 rounded-md p-3"></div>
+                                <div><label class="block text-xs font-bold text-gray-500 uppercase">Company</label><input type="text" id="c-company" value="${c.company || ''}" class="mt-1 block w-full border border-gray-300 rounded-md p-3"></div>
+                                <div><label class="block text-xs font-bold text-gray-500 uppercase">City</label><input type="text" id="c-city" value="${c.city || ''}" class="mt-1 block w-full border border-gray-300 rounded-md p-3"></div>
+                                <div><label class="block text-xs font-bold text-gray-500 uppercase">Address</label><textarea id="c-address" class="mt-1 block w-full border border-gray-300 rounded-md p-3">${c.address || ''}</textarea></div>
+                            </form>
+                        </div>
+                        <div class="pt-4 mt-auto border-t">
+                             <button onclick="document.getElementById('cust-form').dispatchEvent(new Event('submit'))" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold text-lg shadow-lg">Save Customer</button>
+                        </div>
+                    </div>
+                `;
+                this.openModal(formHtml);
+            },
+
+            async saveCustomer(id) {
+                this.toggleLoading(true);
+                const data = {
+                    name: document.getElementById('c-name').value,
+                    phone: document.getElementById('c-phone').value,
+                    company: document.getElementById('c-company').value,
+                    address: document.getElementById('c-address').value,
+                    city: document.getElementById('c-city').value
+                };
+                
+                if (id) {
+                    await Store.update('customers', id, data);
+                } else {
+                    data.id = 'CUST-' + Date.now();
+                    await Store.add('customers', data);
+                }
+                this.toggleLoading(false);
+                this.closeModal();
+                if(this.currentRoute === 'customers') this.renderCustomers(document.getElementById('content-area'));
+                this.showToast('Customer Saved');
+            },
+
+            // Brokers Modal
+            openBrokerModal(id = null) {
+                const b = id ? Store.getById('brokers', id) : { name:'', phone:'', commission:'' };
+                const isEdit = !!id;
+                
+                const formHtml = `
+                    <div class="flex flex-col h-full bg-white md:rounded-lg">
+                         <div class="flex justify-between items-center border-b pb-3 mb-4">
+                            <h3 class="text-lg font-bold text-gray-900">${isEdit ? 'Edit' : 'New'} Broker</h3>
+                            <button onclick="app.closeModal()" class="text-gray-500 p-2"><i class="fa-solid fa-times text-xl"></i></button>
+                        </div>
+                        <form id="broker-form" onsubmit="event.preventDefault(); app.saveBroker('${id || ''}')" class="space-y-4">
+                            <div><label class="block text-xs font-bold text-gray-500 uppercase">Name *</label><input type="text" id="b-name" value="${b.name || ''}" required class="mt-1 block w-full border border-gray-300 rounded-md p-3"></div>
+                            <div><label class="block text-xs font-bold text-gray-500 uppercase">Phone *</label><input type="tel" id="b-phone" value="${b.phone || ''}" required class="mt-1 block w-full border border-gray-300 rounded-md p-3"></div>
+                            <div><label class="block text-xs font-bold text-gray-500 uppercase">Commission (%)</label><input type="number" id="b-commission" value="${b.commission || ''}" class="mt-1 block w-full border border-gray-300 rounded-md p-3"></div>
+                            <button type="submit" class="w-full bg-indigo-600 text-white py-3 rounded-lg mt-6 font-bold">Save Broker</button>
+                        </form>
+                    </div>
+                `;
+                this.openModal(formHtml);
+            },
+
+            async saveBroker(id) {
+                this.toggleLoading(true);
+                const data = {
+                    name: document.getElementById('b-name').value,
+                    phone: document.getElementById('b-phone').value,
+                    commission: document.getElementById('b-commission').value
+                };
+                
+                if (id) {
+                    await Store.update('brokers', id, data);
+                } else {
+                    data.id = 'BRK-' + Date.now();
+                    await Store.add('brokers', data);
+                }
+                this.toggleLoading(false);
+                this.closeModal();
+                if(this.currentRoute === 'brokers') this.renderBrokers(document.getElementById('content-area'));
+                this.showToast('Broker Saved');
+            },
+
+            // Masters
+            addMaster(type) {
+                const name = prompt(`Enter new ${type.slice(0,-1)} name:`);
+                if (name) {
+                    const id = Date.now();
+                    Store.data.masters[type].push({ id, name, status: 'Active' });
+                    Store.saveMasters();
+                    this.renderMasters(document.getElementById('content-area'));
+                }
+            },
+            deleteMaster(type, id) {
+                if(confirm('Delete this master item?')) {
+                    Store.data.masters[type] = Store.data.masters[type].filter(x => x.id !== id);
+                    Store.saveMasters();
+                    this.renderMasters(document.getElementById('content-area'));
+                }
+            },
+
+            // Order Logic
+            tempOrder: null,
+
+            openOrderModal(id = null) {
+                const customers = Store.getAll('customers');
+                const brokers = Store.getAll('brokers');
+                const fabrics = Store.data.masters.fabrics;
+                const units = Store.data.masters.units;
+                
+                if (customers.length === 0) {
+                    return alert('Please add customers first.');
+                }
+
+                if (id) {
+                    this.tempOrder = JSON.parse(JSON.stringify(Store.getById('orders', id)));
+                } else {
+                    this.tempOrder = {
+                        id: '', 
+                        date: new Date().toISOString().split('T')[0],
+                        customerId: customers[0].id,
+                        customerName: customers[0].name,
+                        brokerId: '',
+                        status: 'New',
+                        priority: 'Normal',
+                        items: []
+                    };
+                }
+
+                this.renderOrderForm(customers, brokers, fabrics, units, id);
+            },
+
+            renderOrderForm(customers, brokers, fabrics, units, isEdit) {
+                const o = this.tempOrder;
+                
+                const html = `
+                    <div class="flex flex-col h-full bg-gray-50 md:bg-white">
+                        <div class="flex justify-between items-center border-b bg-white p-4 sticky top-0 z-10">
+                            <h3 class="text-lg font-bold text-gray-900">${isEdit ? 'Edit' : 'New'} Order</h3>
+                            <button onclick="app.closeModal()" class="text-gray-500 p-1"><i class="fa-solid fa-times text-xl"></i></button>
+                        </div>
+                        
+                        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                            <!-- Header Info -->
+                            <div class="bg-white p-4 rounded-lg shadow-sm space-y-3">
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 uppercase">Date</label>
+                                        <input type="date" id="o-date" value="${o.date}" onchange="app.updateTempOrder('date', this.value)" class="mt-1 w-full border rounded p-2 bg-gray-50">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 uppercase">Status</label>
+                                        <select onchange="app.updateTempOrder('status', this.value)" class="mt-1 w-full border rounded p-2 bg-gray-50">
+                                            <option value="New" ${o.status === 'New' ? 'selected' : ''}>New</option>
+                                            <option value="In Progress" ${o.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                                            <option value="Completed" ${o.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase">Customer</label>
+                                    <select onchange="app.updateTempOrder('customerId', this.value)" class="mt-1 w-full border rounded p-3 bg-gray-50">
+                                        ${customers.map(c => `<option value="${c.id}" ${c.id === o.customerId ? 'selected' : ''}>${c.name}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase">Broker</label>
+                                    <select onchange="app.updateTempOrder('brokerId', this.value)" class="mt-1 w-full border rounded p-3 bg-gray-50">
+                                        <option value="">-- None --</option>
+                                        ${brokers.map(b => `<option value="${b.id}" ${b.id === o.brokerId ? 'selected' : ''}>${b.name}</option>`).join('')}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Items List -->
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <h4 class="font-bold text-gray-700">Order Items (${o.items.length})</h4>
+                                    <button onclick="app.addOrderItem()" class="text-indigo-600 font-bold text-sm">+ Add Item</button>
+                                </div>
+                                <div id="order-items-container" class="space-y-3">
+                                    ${o.items.map((item, index) => this.renderOrderItemRow(item, index, fabrics, units)).join('')}
+                                    ${o.items.length === 0 ? '<div class="p-6 text-center text-gray-400 bg-white border-2 border-dashed rounded-lg">No items yet</div>' : ''}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Footer Actions -->
+                        <div class="p-4 bg-white border-t flex items-center justify-between sticky bottom-0 z-10">
+                             <div class="text-lg font-bold text-gray-800">${this.formatCurrency(this.calculateOrderTotal(o))}</div>
+                             <button onclick="app.saveOrder('${isEdit ? o.id : ''}')" class="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold shadow-lg">Save Order</button>
+                        </div>
+                    </div>
+                `;
+                this.openModal(html);
+            },
+
+            renderOrderItemRow(item, index, fabrics, units) {
+                return `
+                    <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-200 relative">
+                        <button onclick="app.removeOrderItem(${index})" class="absolute top-2 right-2 text-red-500 p-1"><i class="fa-solid fa-trash"></i></button>
+                        
+                        <div class="mb-2 pr-6">
+                            <label class="text-[10px] text-gray-400 uppercase font-bold">Design</label>
+                            <input type="text" value="${item.designName || ''}" placeholder="Design Name" onchange="app.updateOrderItem(${index}, 'designName', this.value)" class="w-full font-medium border-b border-gray-200 focus:border-indigo-500 outline-none py-1">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 mb-2">
+                            <div>
+                                <label class="text-[10px] text-gray-400 uppercase font-bold">Fabric</label>
+                                <select onchange="app.updateOrderItem(${index}, 'fabricId', this.value)" class="w-full text-sm border rounded bg-gray-50 p-1">
+                                    ${fabrics.map(f => `<option value="${f.id}" ${f.id == item.fabricId ? 'selected' : ''}>${f.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-400 uppercase font-bold">Color</label>
+                                <input type="text" value="${item.color || ''}" onchange="app.updateOrderItem(${index}, 'color', this.value)" class="w-full text-sm border rounded bg-gray-50 p-1">
+                            </div>
+                        </div>
+
+                        <div class="flex gap-2 items-end">
+                            <div class="flex-1">
+                                <label class="text-[10px] text-gray-400 uppercase font-bold">Qty / Rate</label>
+                                <div class="flex items-center">
+                                    <input type="number" value="${item.qty || 0}" onchange="app.updateOrderItem(${index}, 'qty', this.value)" class="w-16 border rounded-l p-1 text-center text-sm">
+                                    <select onchange="app.updateOrderItem(${index}, 'unit', this.value)" class="border-y border-r bg-gray-100 text-xs px-1 py-1.5 h-[30px]">
+                                        ${units.map(u => `<option value="${u.name}" ${u.name == item.unit ? 'selected' : ''}>${u.name}</option>`).join('')}
+                                    </select>
+                                    <span class="px-2 text-gray-400">x</span>
+                                    <input type="number" value="${item.rate || 0}" onchange="app.updateOrderItem(${index}, 'rate', this.value)" class="flex-1 border rounded p-1 text-sm">
+                                </div>
+                            </div>
+                            <label class="flex flex-col items-center justify-center w-10 h-10 border rounded bg-gray-50 cursor-pointer overflow-hidden relative">
+                                <input type="file" onchange="app.handleImageUpload(this, ${index})" class="absolute inset-0 opacity-0 z-10">
+                                ${item.image ? `<img src="${item.image}" class="w-full h-full object-cover">` : `<i class="fa-solid fa-camera text-gray-400"></i>`}
+                            </label>
+                        </div>
+                    </div>
+                `;
+            },
+
+            updateTempOrder(field, value) {
+                this.tempOrder[field] = value;
+                if (field === 'customerId') {
+                    const c = Store.getById('customers', value);
+                    this.tempOrder.customerName = c ? c.name : 'Unknown';
+                }
+            },
+
+            addOrderItem() {
+                const fabrics = Store.data.masters.fabrics;
+                const units = Store.data.masters.units;
+                if (fabrics.length === 0) return alert('No fabrics defined');
+                
+                this.tempOrder.items.push({
+                    designName: '', fabricId: fabrics[0].id, color: '', qty: 0, unit: units[0]?.name || 'Meters', rate: 0, image: null
+                });
+                this.renderOrderForm(Store.getAll('customers'), Store.getAll('brokers'), fabrics, units, !!this.tempOrder.id);
+            },
+
+            removeOrderItem(index) {
+                this.tempOrder.items.splice(index, 1);
+                this.renderOrderForm(Store.getAll('customers'), Store.getAll('brokers'), Store.data.masters.fabrics, Store.data.masters.units, !!this.tempOrder.id);
+            },
+
+            updateOrderItem(index, field, value) {
+                this.tempOrder.items[index][field] = value;
+            },
+
+            handleImageUpload(input, index) {
+                if (input.files && input.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        // In a real app, you would upload to Storage bucket and get URL
+                        // Here we store base64 string directly in Firestore (limitations apply on size)
+                        // Compressing image is recommended
+                        this.tempOrder.items[index].image = e.target.result;
+                        this.renderOrderForm(Store.getAll('customers'), Store.getAll('brokers'), Store.data.masters.fabrics, Store.data.masters.units, !!this.tempOrder.id);
+                    };
+                    reader.readAsDataURL(input.files[0]);
+                }
+            },
+
+            async saveOrder(id) {
+                const o = this.tempOrder;
+                if(!o.customerId) return alert('Customer required');
+                if(o.items.length === 0) return alert('At least one item required');
+
+                this.toggleLoading(true);
+                if (id) {
+                    await Store.update('orders', id, o);
+                } else {
+                    o.id = 'ORD-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Math.random()*1000);
+                    o.createdDate = new Date().toISOString();
+                    await Store.add('orders', o);
+                }
+                this.toggleLoading(false);
+                this.closeModal();
+                if(this.currentRoute === 'orders') this.renderOrders(document.getElementById('content-area'));
+                this.showToast('Order saved successfully');
+            },
+
+            viewOrder(id) {
+                const o = Store.getById('orders', id);
+                if(!o) return;
+                const customer = Store.getById('customers', o.customerId) || {};
+                const broker = Store.getById('brokers', o.brokerId);
+                const fabrics = Store.data.masters.fabrics;
+
+                const html = `
+                    <div class="print-area bg-white p-6 max-w-3xl mx-auto h-full">
+                        <div class="flex justify-between items-start mb-6 border-b pb-4">
+                            <div>
+                                <h1 class="text-2xl font-bold text-gray-800">INVOICE</h1>
+                                <p class="text-gray-500 text-sm">#${o.id}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-bold">${o.date}</p>
+                                <span class="text-xs px-2 py-1 bg-gray-100 rounded">${o.status}</span>
+                            </div>
+                        </div>
+
+                        <div class="mb-6">
+                            <h3 class="text-xs font-bold text-gray-400 uppercase mb-1">Bill To</h3>
+                            <p class="font-bold">${o.customerName}</p>
+                            <p class="text-sm text-gray-600">${customer.phone}</p>
+                            <p class="text-sm text-gray-600 whitespace-pre-line">${customer.address || ''}</p>
+                        </div>
+
+                        <div class="border rounded-lg overflow-hidden mb-6">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-gray-50 border-b">
+                                    <tr>
+                                        <th class="p-3">Item</th>
+                                        <th class="p-3 text-right">Qty</th>
+                                        <th class="p-3 text-right">Rate</th>
+                                        <th class="p-3 text-right">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y">
+                                    ${o.items.map((item) => {
+                                        const fab = fabrics.find(f => f.id == item.fabricId)?.name || 'Unknown';
+                                        return `
+                                        <tr>
+                                            <td class="p-3">
+                                                <div class="font-medium">${item.designName}</div>
+                                                <div class="text-xs text-gray-500">${fab} - ${item.color}</div>
+                                            </td>
+                                            <td class="p-3 text-right">${item.qty} ${item.unit}</td>
+                                            <td class="p-3 text-right">${item.rate}</td>
+                                            <td class="p-3 text-right font-medium">${this.formatCurrency(item.qty * item.rate)}</td>
+                                        </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                                <tfoot class="bg-gray-50">
+                                    <tr>
+                                        <td colspan="3" class="p-3 text-right font-bold">Grand Total</td>
+                                        <td class="p-3 text-right font-bold text-lg">${this.formatCurrency(this.calculateOrderTotal(o))}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <div class="text-center no-print mt-8 space-x-4">
+                            <button onclick="window.print()" class="bg-gray-800 text-white px-6 py-2 rounded-full shadow-lg"><i class="fa-solid fa-print mr-2"></i> Print</button>
+                            <button onclick="app.closeModal()" class="text-gray-500">Close</button>
+                        </div>
+                    </div>
+                `;
+                this.openModal(html);
+            },
+
+            // --- UTILS ---
+            async deleteItem(collection, id) {
+                if(confirm('Delete this item?')) {
+                    this.toggleLoading(true);
+                    await Store.delete(collection, id);
+                    this.toggleLoading(false);
+                    this.refreshCurrentView();
+                    this.showToast('Deleted');
+                }
+            },
+
+            filterOrders(query) {
+                query = query.toLowerCase();
+                document.querySelectorAll('.search-item').forEach(row => {
+                    const text = row.dataset.search.toLowerCase();
+                    row.style.display = text.includes(query) ? '' : 'none';
+                });
+            },
+
+            calculateOrderTotal(order) {
+                return order.items.reduce((sum, item) => sum + (item.qty * item.rate), 0);
+            },
+
+            formatCurrency(amount) {
+                return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+            },
+
+            getStatusColor(status) {
+                switch(status) {
+                    case 'New': return 'bg-blue-100 text-blue-800';
+                    case 'In Progress': return 'bg-yellow-100 text-yellow-800';
+                    case 'Completed': return 'bg-green-100 text-green-800';
+                    default: return 'bg-gray-100 text-gray-800';
+                }
+            },
+            
+            toggleLoading(show) {
+                const el = document.getElementById('loading-overlay');
+                if(show) el.classList.remove('hidden'); else el.classList.add('hidden');
+            },
+
+            showToast(msg) {
+                const toast = document.getElementById('toast');
+                toast.textContent = msg;
+                toast.classList.remove('opacity-0');
+                setTimeout(() => toast.classList.add('opacity-0'), 3000);
+            },
+            
+            generateReport() {
+                 const type = document.getElementById('report-type').value;
+                let orders = Store.getAll('orders');
+                if (type === 'pending') orders = orders.filter(o => ['New', 'In Progress'].includes(o.status));
+                if (type === 'completed') orders = orders.filter(o => o.status === 'Completed');
+
+                const totalAmount = orders.reduce((sum, o) => sum + this.calculateOrderTotal(o), 0);
+                
+                const html = `
+                    <div class="border rounded p-4 bg-gray-50 mb-4">
+                        <div class="flex justify-between items-center mb-2">
+                             <h4 class="font-bold">${type.toUpperCase()} Report</h4>
+                             <span class="text-xs bg-gray-200 px-2 py-1 rounded">${orders.length} orders</span>
+                        </div>
+                        <div class="text-2xl font-bold text-indigo-600 mb-2">${this.formatCurrency(totalAmount)}</div>
+                        <button onclick="window.print()" class="text-xs text-blue-600 hover:underline"><i class="fa-solid fa-print"></i> Print View</button>
+                    </div>
+                    <table class="w-full text-xs text-left">
+                        <thead><tr class="border-b"><th class="pb-1">ID</th><th class="pb-1">Customer</th><th class="pb-1 text-right">Amt</th></tr></thead>
+                        <tbody>
+                            ${orders.length > 0 ? orders.map(o => `
+                                <tr class="border-b border-gray-100">
+                                    <td class="py-2">${o.id.split('-').pop()}</td>
+                                    <td class="py-2 truncate max-w-[100px]">${o.customerName}</td>
+                                    <td class="py-2 text-right">${this.calculateOrderTotal(o)}</td>
+                                </tr>
+                            `).join('') : '<tr><td colspan="3" class="py-4 text-center text-gray-400">No data found</td></tr>'}
+                        </tbody>
+                    </table>
+                `;
+                document.getElementById('report-result').innerHTML = html;
+                document.getElementById('report-result').classList.remove('hidden');
+            }
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('login-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                app.login(document.getElementById('username').value, document.getElementById('password').value);
+            });
+            app.init();
+        });
+    </script>
+</body>
+</html>
