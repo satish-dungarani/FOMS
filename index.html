@@ -14,7 +14,6 @@
     <!-- Firebase SDKs (Compat version for easier standalone usage) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
     
     <script>
         tailwind.config = {
@@ -245,7 +244,6 @@
             dbName: 'fabric_oms_db',
             useFirebase: false,
             db: null,
-            storage: null,
             listeners: [],
             
             // Local state mirror (kept in sync with DB)
@@ -289,7 +287,6 @@
                             firebase.initializeApp(firebaseConfig);
                         }
                         this.db = firebase.firestore();
-                        this.storage = firebase.storage();
                         this.db.enablePersistence().catch(err => console.log('Persistence error', err)); // Offline support
                         this.useFirebase = true;
                         this.updateStatusUI(true);
@@ -360,43 +357,6 @@
                 });
             },
 
-            // --- Firestore helpers ---
-            sanitizeForFirestore(value) {
-                // Firestore rejects undefined, NaN, Infinity, and certain nested entity patterns.
-                // This function normalizes objects/arrays and drops invalid values.
-                const clean = (v) => {
-                    if (v === undefined) return null;
-                    if (typeof v === 'number' && (!Number.isFinite(v) || Number.isNaN(v))) return 0;
-                    if (v instanceof Date) return v.toISOString();
-                    if (Array.isArray(v)) {
-                        return v
-                            .map(x => clean(x))
-                            .filter(x => x !== null && x !== undefined);
-                    }
-                    if (v && typeof v === 'object') {
-                        const out = {};
-                        Object.keys(v).forEach(k => {
-                            const cv = clean(v[k]);
-                            if (cv !== undefined) out[k] = cv;
-                        });
-                        return out;
-                    }
-                    return v;
-                };
-                return clean(value);
-            },
-
-            async uploadImageDataUrl(dataUrl, path) {
-                if (!this.useFirebase || !this.storage) return dataUrl; // fallback to inline
-                // Ensure it's a data URL before uploading
-                if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return dataUrl;
-
-                const ref = this.storage.ref().child(path);
-                // putString supports data_url directly
-                await ref.putString(dataUrl, 'data_url');
-                return await ref.getDownloadURL();
-            },
-
             // --- CRUD Operations ---
             getAll(collection) { return this.data[collection] || []; },
             
@@ -406,9 +366,10 @@
 
             async add(collection, item) { 
                 if (this.useFirebase) {
+                    // Remove ID if it was manually generated (Firestore auto-ID is better, but we stick to app logic)
+                    // We use custom IDs for orders/customers as defined in app logic, so we use .set() on specific doc or .add()
                     const docId = item.id;
-                    const clean = this.sanitizeForFirestore(item);
-                    await this.db.collection(collection).doc(docId.toString()).set(clean);
+                    await this.db.collection(collection).doc(docId.toString()).set(item);
                 } else {
                     this.data[collection].push(item); 
                     this.saveLocal();
@@ -417,8 +378,7 @@
 
             async update(collection, id, newData) {
                 if (this.useFirebase) {
-                    const clean = this.sanitizeForFirestore(newData);
-                    await this.db.collection(collection).doc(id.toString()).update(clean);
+                    await this.db.collection(collection).doc(id.toString()).update(newData);
                 } else {
                     const idx = this.data[collection].findIndex(x => x.id == id);
                     if (idx !== -1) {
@@ -977,20 +937,6 @@
                                     }
                                 </div>
                                 <p class="text-[10px] text-red-500 mt-2">* Note: These rules are for testing/internal use only as they allow public read/write access.</p>
-                                <div class="mt-3 text-xs text-gray-600">
-                                    <p class="font-bold mb-1">Also required for Images:</p>
-                                    <p>Enable <strong>Firebase Storage</strong> in your Firebase project. For testing you can set Storage Rules to allow uploads:</p>
-                                    <div class="bg-gray-800 text-gray-200 p-2 rounded mt-2 text-xs font-mono select-all">
-                                        rules_version = '2';<br>
-                                        service firebase.storage {<br>
-                                        &nbsp;&nbsp;match /b/{bucket}/o {<br>
-                                        &nbsp;&nbsp;&nbsp;&nbsp;match /{allPaths=**} {<br>
-                                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if true;<br>
-                                        &nbsp;&nbsp;&nbsp;&nbsp;}<br>
-                                        &nbsp;&nbsp;}<br>
-                                        }
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -1356,7 +1302,7 @@
                         reader.onload = (e) => resolve(e.target.result);
                         reader.readAsDataURL(file);
                     }));
-                    const newImgs = (await Promise.all(promises)).filter(x => typeof x === 'string' && x.startsWith('data:image/'));
+                    const newImgs = await Promise.all(promises);
                     this.tempItem.images.push(...newImgs);
                     this.renderItemModal();
                 }
@@ -1501,74 +1447,18 @@
                 if(o.items.length === 0) return alert('At least one item required');
 
                 this.toggleLoading(true);
-                try {
-                    // Ensure IDs
-                    const isNew = !id;
-                    const orderId = id || ('ORD-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Math.random()*1000));
-
-                    // Deep clone to avoid mutating UI state while uploading
-                    const payload = JSON.parse(JSON.stringify(o));
-                    payload.id = orderId;
-                    payload.updatedDate = new Date().toISOString();
-                    if (isNew) payload.createdDate = new Date().toISOString();
-
-                    // Normalize items + upload images if Firebase is enabled
-                    payload.items = (payload.items || []).map((it, idx) => {
-                        if (!it.images) it.images = [];
-                        // convert qty/rate to numbers
-                        it.qty = Number(it.qty || 0);
-                        it.rate = Number(it.rate || 0);
-                        it.fabricId = it.fabricId ?? '';
-                        it.color = it.color ?? '';
-                        it.designName = it.designName ?? '';
-                        it.unit = it.unit ?? '';
-                        // legacy
-                        if (it.image) {
-                            it.images.push(it.image);
-                            delete it.image;
-                        }
-                        return it;
-                    });
-
-                    if (Store.useFirebase) {
-                        // Upload any base64 images to Firebase Storage and replace with URLs
-                        for (let i = 0; i < payload.items.length; i++) {
-                            const item = payload.items[i];
-                            const outUrls = [];
-                            for (let j = 0; j < (item.images || []).length; j++) {
-                                const img = item.images[j];
-                                // If already a URL, keep it
-                                if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
-                                    outUrls.push(img);
-                                } else {
-                                    const filePath = `orders/${orderId}/item-${i+1}/${Date.now()}-${j}.jpg`;
-                                    const url = await Store.uploadImageDataUrl(img, filePath);
-                                    outUrls.push(url);
-                                }
-                            }
-                            item.images = outUrls;
-                        }
-                    }
-
-                    // Sanitize for Firestore
-                    const cleanPayload = Store.sanitizeForFirestore(payload);
-
-                    if (id) {
-                        await Store.update('orders', id, cleanPayload);
-                    } else {
-                        await Store.add('orders', cleanPayload);
-                    }
-
-                    this.showToast('Order saved successfully');
-                    this.tempOrder = null;
-                    this.editingOrderId = null;
-                    window.location.hash = 'orders';
-                } catch (err) {
-                    console.error(err);
-                    alert('Failed to save order. ' + (err?.message || err));
-                } finally {
-                    this.toggleLoading(false);
+                if (id) {
+                    await Store.update('orders', id, o);
+                } else {
+                    o.id = 'ORD-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Math.random()*1000);
+                    o.createdDate = new Date().toISOString();
+                    await Store.add('orders', o);
                 }
+                this.toggleLoading(false);
+                this.tempOrder = null;
+                this.editingOrderId = null;
+                window.location.hash = 'orders';
+                this.showToast('Order saved successfully');
             },
 
             viewOrder(id) {
