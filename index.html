@@ -267,12 +267,22 @@
             },
 
             async init() {
-                // 1. Load Local Config
-                const firebaseConfigStr = localStorage.getItem('oms_firebase_config');
-                
-                if (firebaseConfigStr) {
+                // Default Hardcoded Config
+                const defaultConfig = {
+                    apiKey: "AIzaSyBJIyDmTEn7BgsPy_tx1wgxwA1gFmqX7fI",
+                    authDomain: "fab-oms.firebaseapp.com",
+                    projectId: "fab-oms",
+                    storageBucket: "fab-oms.firebasestorage.app",
+                    messagingSenderId: "21494584900",
+                    appId: "1:21494584900:web:f028d5e99881136c21ce11"
+                };
+
+                // Use localStorage config if exists (override), otherwise use default
+                const localConfigStr = localStorage.getItem('oms_firebase_config');
+                const firebaseConfig = localConfigStr ? JSON.parse(localConfigStr) : defaultConfig;
+
+                if (firebaseConfig) {
                     try {
-                        const firebaseConfig = JSON.parse(firebaseConfigStr);
                         if (!firebase.apps.length) {
                             firebase.initializeApp(firebaseConfig);
                         }
@@ -868,8 +878,19 @@
 
             // Database Settings Modal
             openDbSettings() {
-                const config = localStorage.getItem('oms_firebase_config') || '';
-                
+                // Show current active config (either local override or default)
+                let config = localStorage.getItem('oms_firebase_config');
+                if (!config) {
+                    config = JSON.stringify({
+                        apiKey: "AIzaSyBJIyDmTEn7BgsPy_tx1wgxwA1gFmqX7fI",
+                        authDomain: "fab-oms.firebaseapp.com",
+                        projectId: "fab-oms",
+                        storageBucket: "fab-oms.firebasestorage.app",
+                        messagingSenderId: "21494584900",
+                        appId: "1:21494584900:web:f028d5e99881136c21ce11"
+                    }, null, 4);
+                }
+
                 const html = `
                     <div class="bg-white h-full md:h-auto">
                         <div class="flex justify-between items-center border-b pb-3 mb-4">
