@@ -1813,22 +1813,30 @@
                     payload.updatedDate = new Date().toISOString();
                     if (isNew) payload.createdDate = new Date().toISOString();
 
-                    // Normalize items + upload images if Firebase is enabled
+                    // Normalize items - ensure each item has exact expected structure
                     payload.items = (payload.items || []).map((it, idx) => {
-                        if (!it.images) it.images = [];
-                        // convert qty/rate to numbers
-                        it.qty = Number(it.qty || 0);
-                        it.rate = Number(it.rate || 0);
-                        it.fabricId = it.fabricId ?? '';
-                        it.color = it.color ?? '';
-                        it.designName = it.designName ?? '';
-                        it.unit = it.unit ?? '';
-                        // legacy
-                        if (it.image) {
-                            it.images.push(it.image);
-                            delete it.image;
+                        // Ensure images is always a clean array of strings
+                        let images = [];
+                        if (Array.isArray(it.images)) {
+                            images = it.images.filter(img => typeof img === 'string' && img.length > 0);
                         }
-                        return it;
+                        // Handle legacy single image field
+                        if (it.image && typeof it.image === 'string') {
+                            images.push(it.image);
+                        }
+                        
+                        // Return a clean, normalized item object with ALL fields explicitly defined
+                        return {
+                            designId: String(it.designId || ''),
+                            designName: String(it.designName || ''),
+                            fabricId: String(it.fabricId || ''),
+                            millId: String(it.millId || ''),
+                            millName: String(it.millName || ''),
+                            qty: Number(it.qty) || 0,
+                            unit: String(it.unit || 'Meters'),
+                            rate: Number(it.rate) || 0,
+                            images: images
+                        };
                     });
 
                     if (Store.useFirebase) {
