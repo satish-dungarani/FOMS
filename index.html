@@ -9,6 +9,7 @@
     <script>
         tailwind = window.tailwind || {};
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
@@ -24,6 +25,9 @@
 
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Flatpickr Datepicker -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
@@ -38,11 +42,119 @@
         ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
+
         /* Mobile Optimizations */
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
         body { -webkit-tap-highlight-color: transparent; }
-        
+
+        /* Dark mode (CSS fallback so existing templates work without rewriting all classes)
+           NOTE: We override common Tailwind utility classes used throughout the app, including hover states,
+           subtle tinted backgrounds (blue-50, indigo-50, etc.), and 3rd-party widgets like Flatpickr.
+        */
+        .dark body { background: #0b1220 !important; color: #e5e7eb !important; }
+
+        /* Base surfaces */
+        .dark .bg-gray-50 { background-color: #0f172a !important; }
+        .dark .bg-gray-100 { background-color: #0b1220 !important; }
+        .dark .bg-white { background-color: #111827 !important; }
+        .dark .bg-gray-200 { background-color: #1f2937 !important; }
+
+        /* Text */
+        .dark .text-gray-900,
+        .dark .text-gray-800,
+        .dark .text-gray-700 { color: #e5e7eb !important; }
+        .dark .text-gray-600,
+        .dark .text-gray-500 { color: #cbd5e1 !important; }
+        .dark .text-gray-400 { color: #94a3b8 !important; }
+        .dark .text-gray-300 { color: #cbd5e1 !important; }
+
+        /* Borders / shadows */
+        .dark .border-gray-100,
+        .dark .border-gray-200,
+        .dark .border-gray-300 { border-color: #1f2937 !important; }
+        .dark .shadow-sm,
+        .dark .shadow-lg,
+        .dark .shadow-xl { box-shadow: 0 10px 30px rgba(0,0,0,0.45) !important; }
+
+        /* Inputs */
+        .dark input,
+        .dark select,
+        .dark textarea { background-color: #0f172a !important; color: #e5e7eb !important; border-color: #243047 !important; }
+        .dark option { background-color: #0f172a !important; color: #e5e7eb !important; }
+
+        /* Hover backgrounds (fix table row hover readability) */
+        .dark .hover\:bg-gray-50:hover { background-color: #0f172a !important; }
+        .dark .hover\:bg-gray-100:hover { background-color: #111827 !important; }
+        .dark .hover\:bg-gray-200:hover { background-color: #1f2937 !important; }
+
+        /* Sidebar + mobile bottom nav dark refinements */
+        .dark #sidebar { background-color: #0b1220 !important; }
+        .dark #sidebar .bg-slate-700 { background-color: #111827 !important; }
+        .dark nav.md\:hidden.fixed.bottom-0 { background-color: #111827 !important; border-color: #1f2937 !important; }
+
+        /* Light tinted backgrounds in dark mode (cards/buttons/badges) */
+        .dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.14) !important; }
+        .dark .bg-indigo-100 { background-color: rgba(99, 102, 241, 0.18) !important; }
+        .dark .bg-blue-50 { background-color: rgba(59, 130, 246, 0.14) !important; }
+        .dark .bg-blue-100 { background-color: rgba(59, 130, 246, 0.18) !important; }
+        .dark .bg-green-50 { background-color: rgba(34, 197, 94, 0.14) !important; }
+        .dark .bg-green-100 { background-color: rgba(34, 197, 94, 0.18) !important; }
+        .dark .bg-yellow-50 { background-color: rgba(234, 179, 8, 0.14) !important; }
+        .dark .bg-yellow-100 { background-color: rgba(234, 179, 8, 0.18) !important; }
+        .dark .bg-purple-50 { background-color: rgba(168, 85, 247, 0.14) !important; }
+        .dark .bg-purple-100 { background-color: rgba(168, 85, 247, 0.18) !important; }
+        .dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.14) !important; }
+        .dark .bg-red-100 { background-color: rgba(239, 68, 68, 0.18) !important; }
+
+        /* Tinted text colors in dark mode */
+        .dark .text-indigo-600 { color: #a5b4fc !important; }
+        .dark .text-blue-600 { color: #93c5fd !important; }
+        .dark .text-green-600 { color: #86efac !important; }
+        .dark .text-yellow-800 { color: #fde68a !important; }
+        .dark .text-red-600 { color: #fca5a5 !important; }
+        .dark .text-purple-600 { color: #d8b4fe !important; }
+
+        /* Status pill defaults used by getStatusColor() */
+        .dark .bg-blue-100.text-blue-800 { background: rgba(59,130,246,0.18) !important; color: #bfdbfe !important; }
+        .dark .bg-yellow-100.text-yellow-800 { background: rgba(234,179,8,0.18) !important; color: #fde68a !important; }
+        .dark .bg-green-100.text-green-800 { background: rgba(34,197,94,0.18) !important; color: #bbf7d0 !important; }
+        .dark .bg-gray-100.text-gray-800 { background: rgba(148,163,184,0.16) !important; color: #e5e7eb !important; }
+
+        /* Loading overlay (so it doesn't flash white in dark mode) */
+        .dark #loading-overlay { background-color: rgba(17, 24, 39, 0.75) !important; }
+
+        /* Modal container panel + overlay tweaks */
+        .dark #modal-container .bg-white { background-color: #111827 !important; }
+        .dark #modal-container .border-b { border-color: #1f2937 !important; }
+        .dark #modal-container .border-t { border-color: #1f2937 !important; }
+
+        /* Flatpickr dark theme */
+        .dark .flatpickr-calendar {
+            background: #111827 !important;
+            border-color: #1f2937 !important;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.55) !important;
+        }
+        .dark .flatpickr-months .flatpickr-month,
+        .dark .flatpickr-current-month,
+        .dark .flatpickr-weekday {
+            color: #e5e7eb !important;
+        }
+        .dark .flatpickr-day { color: #cbd5e1 !important; }
+        .dark .flatpickr-day:hover { background: #0f172a !important; border-color: #0f172a !important; }
+        .dark .flatpickr-day.today { border-color: #6366f1 !important; }
+        .dark .flatpickr-day.selected,
+        .dark .flatpickr-day.startRange,
+        .dark .flatpickr-day.endRange {
+            background: #4f46e5 !important;
+            border-color: #4f46e5 !important;
+            color: #ffffff !important;
+        }
+        .dark .flatpickr-time input,
+        .dark .flatpickr-time .flatpickr-am-pm {
+            background: #0f172a !important;
+            color: #e5e7eb !important;
+        }
+
         @media print {
             .no-print { display: none !important; }
             .print-only { display: block !important; }
@@ -51,14 +163,19 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 font-sans text-gray-800 antialiased h-screen overflow-hidden flex flex-col">
+<body class="bg-gray-100 font-sans text-gray-800 antialiased h-screen overflow-hidden flex flex-col transition-colors duration-200">
 
     <!-- ================= AUTH SCREEN ================= -->
     <div id="auth-screen" class="fixed inset-0 z-50 bg-gray-900 flex items-center justify-center p-4">
         <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md relative">
-            <button onclick="app.openDbSettings()" class="absolute top-4 right-4 text-gray-400 hover:text-indigo-600">
-                <i class="fa-solid fa-database"></i>
-            </button>
+            <div class="absolute top-4 right-4 flex items-center gap-2">
+                <button onclick="app.toggleTheme()" class="text-gray-400 hover:text-indigo-600" title="Toggle theme" aria-label="Toggle theme">
+                    <i class="fa-solid fa-moon" id="theme-icon-login"></i>
+                </button>
+                <button onclick="app.openDbSettings()" class="text-gray-400 hover:text-indigo-600" title="Database settings" aria-label="Database settings">
+                    <i class="fa-solid fa-database"></i>
+                </button>
+            </div>
             
             <div class="text-center mb-6">
                 <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 mb-4">
@@ -125,6 +242,9 @@
                 </a>
             </nav>
             <div class="p-4 border-t border-slate-700 space-y-4">
+                <button onclick="app.toggleTheme()" class="flex items-center w-full text-sm font-medium text-gray-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-moon w-6 mr-2" id="theme-icon-desktop"></i> <span id="theme-label-desktop">Dark Mode</span>
+                </button>
                 <button onclick="app.openDbSettings()" class="flex items-center w-full text-sm font-medium text-gray-400 hover:text-white transition-colors">
                     <i class="fa-solid fa-gear w-6 mr-2"></i> Settings
                 </button>
@@ -143,9 +263,14 @@
                     <span class="font-bold text-lg text-gray-800">Fabric OMS</span>
                     <span id="mobile-db-indicator" class="w-2 h-2 rounded-full bg-gray-400"></span>
                 </div>
-                <button onclick="app.logout()" class="text-gray-500 p-2">
-                    <i class="fa-solid fa-right-from-bracket"></i>
-                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="app.toggleTheme()" class="text-gray-500 p-2" aria-label="Toggle theme">
+                        <i class="fa-solid fa-moon" id="theme-icon-mobile"></i>
+                    </button>
+                    <button onclick="app.logout()" class="text-gray-500 p-2" aria-label="Logout">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
             </header>
 
             <!-- Scrollable Content Area -->
@@ -239,6 +364,21 @@
     <!-- ================= TOAST NOTIFICATION ================= -->
     <div id="toast" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg opacity-0 transition-opacity duration-300 z-[60] text-sm pointer-events-none whitespace-nowrap">
         Notification
+    </div>
+
+    <!-- ================= IMAGE PREVIEW LIGHTBOX ================= -->
+    <div id="image-lightbox" class="fixed inset-0 z-[100] hidden bg-black/90 flex items-center justify-center" onclick="app.closeLightbox(event)">
+        <button onclick="app.closeLightbox()" class="absolute top-4 right-4 text-white text-3xl hover:text-gray-300 z-10 w-12 h-12 flex items-center justify-center">
+            <i class="fa-solid fa-times"></i>
+        </button>
+        <button onclick="app.prevImage(event)" class="absolute left-4 text-white text-3xl hover:text-gray-300 z-10 w-12 h-12 flex items-center justify-center">
+            <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        <button onclick="app.nextImage(event)" class="absolute right-4 text-white text-3xl hover:text-gray-300 z-10 w-12 h-12 flex items-center justify-center">
+            <i class="fa-solid fa-chevron-right"></i>
+        </button>
+        <img id="lightbox-image" src="" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl" onclick="event.stopPropagation()">
+        <div id="lightbox-counter" class="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-sm bg-black/50 px-4 py-2 rounded-full"></div>
     </div>
 
     <!-- ================= JAVASCRIPT LOGIC ================= -->
@@ -567,6 +707,55 @@
         const app = {
             currentUser: null,
             currentRoute: 'dashboard',
+
+            // --- THEME (Light/Dark) ---
+            theme: 'light',
+
+            initTheme() {
+                const saved = localStorage.getItem('oms_theme');
+                if (saved === 'dark' || saved === 'light') {
+                    this.theme = saved;
+                } else {
+                    // Default: light
+                    this.theme = 'light';
+                }
+                this.applyTheme(this.theme);
+            },
+
+            applyTheme(theme) {
+                this.theme = theme === 'dark' ? 'dark' : 'light';
+                const root = document.documentElement;
+                if (this.theme === 'dark') root.classList.add('dark');
+                else root.classList.remove('dark');
+
+                localStorage.setItem('oms_theme', this.theme);
+
+                // Update icons/labels
+                const iconDesktop = document.getElementById('theme-icon-desktop');
+                const labelDesktop = document.getElementById('theme-label-desktop');
+                const iconMobile = document.getElementById('theme-icon-mobile');
+                const iconLogin = document.getElementById('theme-icon-login');
+
+                if (iconDesktop) {
+                    iconDesktop.classList.remove('fa-moon', 'fa-sun');
+                    iconDesktop.classList.add(this.theme === 'dark' ? 'fa-sun' : 'fa-moon');
+                }
+                if (labelDesktop) {
+                    labelDesktop.textContent = this.theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+                }
+                if (iconMobile) {
+                    iconMobile.classList.remove('fa-moon', 'fa-sun');
+                    iconMobile.classList.add(this.theme === 'dark' ? 'fa-sun' : 'fa-moon');
+                }
+                if (iconLogin) {
+                    iconLogin.classList.remove('fa-moon', 'fa-sun');
+                    iconLogin.classList.add(this.theme === 'dark' ? 'fa-sun' : 'fa-moon');
+                }
+            },
+
+            toggleTheme() {
+                this.applyTheme(this.theme === 'dark' ? 'light' : 'dark');
+            },
             
             toggleMobileMenu() {
                 const menu = document.getElementById('mobile-more-menu');
@@ -578,6 +767,7 @@
             },
 
             init() {
+                this.initTheme();
                 Store.init();
                 this.checkAuth();
                 window.addEventListener('hashchange', () => this.handleRoute());
@@ -595,10 +785,14 @@
                     this.currentUser = session;
                     document.getElementById('auth-screen').classList.add('hidden');
                     document.getElementById('app-layout').classList.remove('hidden');
+                    // Ensure theme buttons (now visible) reflect current theme
+                    this.applyTheme(this.theme);
                     this.handleRoute();
                 } else {
                     document.getElementById('auth-screen').classList.remove('hidden');
                     document.getElementById('app-layout').classList.add('hidden');
+                    // Ensure login theme icon reflects current theme
+                    this.applyTheme(this.theme);
                 }
             },
 
@@ -742,7 +936,7 @@
                                         <tr class="hover:bg-gray-50 cursor-pointer" onclick="app.viewOrder('${o.id}')">
                                             <td class="px-6 py-3 font-medium text-gray-900">${o.id}</td>
                                             <td class="px-6 py-3">${o.customerName || 'Unknown'}</td>
-                                            <td class="px-6 py-3">${o.date}</td>
+                                            <td class="px-6 py-3">${this.formatDate(o.date)}</td>
                                             <td class="px-6 py-3"><span class="px-2 py-1 rounded-full text-xs ${this.getStatusColor(o.status)}">${o.status}</span></td>
                                             <td class="px-6 py-3">${this.formatCurrency(this.calculateOrderTotal(o))}</td>
                                         </tr>
@@ -756,7 +950,10 @@
             },
 
             renderCustomers(container) {
-                const customers = Store.getAll('customers');
+                let customers = Store.getAll('customers');
+                const state = this.sortState.customers;
+                customers = this.sortData('customers', customers, state.column, state.direction);
+                
                 container.innerHTML = `
                     <div class="flex justify-between items-center mb-4 md:mb-6">
                         <h2 class="text-2xl font-bold">Customers</h2>
@@ -793,18 +990,18 @@
                         <table class="min-w-full text-left text-sm whitespace-nowrap">
                             <thead class="bg-gray-50 text-xs font-semibold text-gray-600 uppercase border-b">
                                 <tr>
-                                    <th class="px-6 py-3">Name</th>
-                                    <th class="px-6 py-3">Phone</th>
-                                    <th class="px-6 py-3">Company</th>
-                                    <th class="px-6 py-3">City</th>
+                                    <th class="px-6 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('customers', 'name')">Name ${this.getSortIcon('customers', 'name')}</th>
+                                    <th class="px-6 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('customers', 'phone')">Phone ${this.getSortIcon('customers', 'phone')}</th>
+                                    <th class="px-6 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('customers', 'company')">Company ${this.getSortIcon('customers', 'company')}</th>
+                                    <th class="px-6 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('customers', 'city')">City ${this.getSortIcon('customers', 'city')}</th>
                                     <th class="px-6 py-3 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
                                 ${customers.map(c => `
                                     <tr class="hover:bg-gray-50">
-                                        <td class="px-6 py-3 font-medium text-gray-900">${c.name}</td>
-                                        <td class="px-6 py-3">${c.phone}</td>
+                                        <td class="px-6 py-3 font-medium text-gray-900">${c.name || ''}</td>
+                                        <td class="px-6 py-3">${c.phone || ''}</td>
                                         <td class="px-6 py-3">${c.company || '-'}</td>
                                         <td class="px-6 py-3">${c.city || '-'}</td>
                                         <td class="px-6 py-3 text-right">
@@ -821,7 +1018,10 @@
             },
 
             renderBrokers(container) {
-                const brokers = Store.getAll('brokers');
+                let brokers = Store.getAll('brokers');
+                const state = this.sortState.brokers;
+                brokers = this.sortData('brokers', brokers, state.column, state.direction);
+                
                 container.innerHTML = `
                     <div class="flex justify-between items-center mb-4 md:mb-6">
                         <h2 class="text-2xl font-bold">Brokers</h2>
@@ -853,17 +1053,17 @@
                         <table class="min-w-full text-left text-sm whitespace-nowrap">
                             <thead class="bg-gray-50 text-xs font-semibold text-gray-600 uppercase border-b">
                                 <tr>
-                                    <th class="px-6 py-3">Name</th>
-                                    <th class="px-6 py-3">Phone</th>
-                                    <th class="px-6 py-3">Commission</th>
+                                    <th class="px-6 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('brokers', 'name')">Name ${this.getSortIcon('brokers', 'name')}</th>
+                                    <th class="px-6 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('brokers', 'phone')">Phone ${this.getSortIcon('brokers', 'phone')}</th>
+                                    <th class="px-6 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('brokers', 'commission')">Commission ${this.getSortIcon('brokers', 'commission')}</th>
                                     <th class="px-6 py-3 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
                                 ${brokers.map(b => `
                                     <tr class="hover:bg-gray-50">
-                                        <td class="px-6 py-3 font-medium text-gray-900">${b.name}</td>
-                                        <td class="px-6 py-3">${b.phone}</td>
+                                        <td class="px-6 py-3 font-medium text-gray-900">${b.name || ''}</td>
+                                        <td class="px-6 py-3">${b.phone || ''}</td>
                                         <td class="px-6 py-3">${b.commission || 0}%</td>
                                         <td class="px-6 py-3 text-right">
                                             <button onclick="app.openBrokerModal('${b.id}')" class="text-blue-600 hover:text-blue-900 mr-3"><i class="fa-solid fa-pen"></i></button>
@@ -931,31 +1131,262 @@
                 `;
             },
 
+            // Order filter state
+            orderFilters: {
+                search: '',
+                customerId: '',
+                brokerId: '',
+                status: '',
+                dateFrom: '',
+                dateTo: ''
+            },
+
+            resetOrderFilters() {
+                this.orderFilters = {
+                    search: '',
+                    customerId: '',
+                    brokerId: '',
+                    status: '',
+                    dateFrom: '',
+                    dateTo: ''
+                };
+                this.renderOrders(document.getElementById('content-area'));
+            },
+
+            // Convert dd/mm/yyyy to yyyy-mm-dd for comparison
+            parseDateInput(dateStr) {
+                if (!dateStr) return '';
+                // If already in yyyy-mm-dd format
+                if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+                // Parse dd/mm/yyyy
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    const [day, month, year] = parts;
+                    if (day && month && year && year.length === 4) {
+                        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                    }
+                }
+                return '';
+            },
+
+            // Format yyyy-mm-dd to dd/mm/yyyy for display in inputs
+            formatDateForInput(dateStr) {
+                if (!dateStr) return '';
+                if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) return dateStr;
+                const parts = dateStr.split('-');
+                if (parts.length === 3) {
+                    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                }
+                return dateStr;
+            },
+
+            applyOrderFilters() {
+                this.orderFilters.search = document.getElementById('filter-search')?.value || '';
+                this.orderFilters.customerId = document.getElementById('filter-customer')?.value || '';
+                this.orderFilters.brokerId = document.getElementById('filter-broker')?.value || '';
+                this.orderFilters.status = document.getElementById('filter-status')?.value || '';
+                
+                // Parse date inputs from dd/mm/yyyy to yyyy-mm-dd
+                const fromInput = document.getElementById('filter-date-from')?.value || '';
+                const toInput = document.getElementById('filter-date-to')?.value || '';
+                this.orderFilters.dateFrom = this.parseDateInput(fromInput);
+                this.orderFilters.dateTo = this.parseDateInput(toInput);
+                
+                this.renderOrders(document.getElementById('content-area'));
+            },
+
+            initDatePickers() {
+                const fromEl = document.getElementById('filter-date-from');
+                const toEl = document.getElementById('filter-date-to');
+                
+                if (fromEl) {
+                    flatpickr(fromEl, {
+                        dateFormat: 'd/m/Y',
+                        allowInput: false,
+                        clickOpens: true,
+                        defaultDate: this.formatDateForInput(this.orderFilters.dateFrom),
+                        maxDate: this.orderFilters.dateTo ? this.formatDateForInput(this.orderFilters.dateTo) : undefined,
+                        onChange: (selectedDates, dateStr) => {
+                            this.orderFilters.dateFrom = this.parseDateInput(dateStr);
+                            
+                            // Ensure From Date <= To Date
+                            if (this.orderFilters.dateTo && this.orderFilters.dateFrom > this.orderFilters.dateTo) {
+                                this.orderFilters.dateTo = ''; // Clear invalid range
+                            }
+                            
+                            this.renderOrders(document.getElementById('content-area'));
+                        }
+                    });
+                }
+                
+                if (toEl) {
+                    flatpickr(toEl, {
+                        dateFormat: 'd/m/Y',
+                        allowInput: false,
+                        clickOpens: true,
+                        defaultDate: this.formatDateForInput(this.orderFilters.dateTo),
+                        minDate: this.orderFilters.dateFrom ? this.formatDateForInput(this.orderFilters.dateFrom) : undefined,
+                        onChange: (selectedDates, dateStr) => {
+                            this.orderFilters.dateTo = this.parseDateInput(dateStr);
+                            
+                            // Ensure To Date >= From Date
+                            if (this.orderFilters.dateFrom && this.orderFilters.dateTo < this.orderFilters.dateFrom) {
+                                this.orderFilters.dateFrom = ''; // Clear invalid range
+                            }
+                            
+                            this.renderOrders(document.getElementById('content-area'));
+                        }
+                    });
+                }
+            },
+
+            getFilteredOrders() {
+                let orders = Store.getAll('orders');
+                const f = this.orderFilters;
+
+                // Apply search filter
+                if (f.search) {
+                    const q = f.search.toLowerCase();
+                    orders = orders.filter(o => 
+                        o.id.toLowerCase().includes(q) || 
+                        (o.customerName || '').toLowerCase().includes(q)
+                    );
+                }
+
+                // Apply customer filter
+                if (f.customerId) {
+                    orders = orders.filter(o => o.customerId === f.customerId);
+                }
+
+                // Apply broker filter
+                if (f.brokerId) {
+                    orders = orders.filter(o => o.brokerId === f.brokerId);
+                }
+
+                // Apply status filter
+                if (f.status) {
+                    orders = orders.filter(o => o.status === f.status);
+                }
+
+                // Apply date from filter
+                if (f.dateFrom) {
+                    orders = orders.filter(o => o.date >= f.dateFrom);
+                }
+
+                // Apply date to filter
+                if (f.dateTo) {
+                    orders = orders.filter(o => o.date <= f.dateTo);
+                }
+
+                return orders;
+            },
+
+            toggleOrderFilters() {
+                const panel = document.getElementById('order-filters-panel');
+                if (panel) {
+                    panel.classList.toggle('hidden');
+                }
+            },
+
             renderOrders(container) {
-                const orders = Store.getAll('orders').sort((a,b) => new Date(b.createdDate) - new Date(a.createdDate));
+                let orders = this.getFilteredOrders();
+                const state = this.sortState.orders;
+                orders = this.sortData('orders', orders, state.column, state.direction);
+                
+                const customers = Store.getAll('customers');
+                const brokers = Store.getAll('brokers');
+                const f = this.orderFilters;
+                const hasActiveFilters = f.customerId || f.brokerId || f.status || f.dateFrom || f.dateTo;
                 
                 container.innerHTML = `
-                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 md:mb-6 gap-3">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
                         <h2 class="text-2xl font-bold">Orders</h2>
                         <div class="flex gap-2 w-full md:w-auto">
                             <div class="relative flex-1 md:w-64">
                                 <i class="fa-solid fa-search absolute left-3 top-3 text-gray-400 text-sm"></i>
-                                <input type="text" placeholder="Search Order..." onkeyup="app.filterOrders(this.value)" class="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                                <input type="text" id="filter-search" value="${f.search}" placeholder="Search Order..." oninput="app.applyOrderFilters()" class="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                             </div>
+                            <button onclick="app.toggleOrderFilters()" class="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 ${hasActiveFilters ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'text-gray-600'}">
+                                <i class="fa-solid fa-filter"></i>
+                                <span class="hidden md:inline">Filters</span>
+                                ${hasActiveFilters ? '<span class="w-2 h-2 bg-indigo-500 rounded-full"></span>' : ''}
+                            </button>
                             <button onclick="app.navigateToOrderForm()" class="hidden md:flex bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm items-center whitespace-nowrap">
                                 <i class="fa-solid fa-plus mr-1"></i> New Order
                             </button>
                         </div>
                     </div>
 
+                    <!-- Advanced Filters Panel -->
+                    <div id="order-filters-panel" class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 ${hasActiveFilters ? '' : 'hidden'}">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="font-bold text-gray-700 text-sm uppercase tracking-wider">Filter Orders</h3>
+                            <button onclick="app.resetOrderFilters()" class="text-xs text-red-500 hover:text-red-700 font-medium">
+                                <i class="fa-solid fa-times-circle mr-1"></i>Clear All
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                            <!-- Customer -->
+                            <div>
+                                <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1">Customer</label>
+                                <select id="filter-customer" onchange="app.applyOrderFilters()" class="w-full border border-gray-200 rounded-lg p-2 text-sm bg-white">
+                                    <option value="">All Customers</option>
+                                    ${customers.map(c => `<option value="${c.id}" ${f.customerId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            
+                            <!-- Broker -->
+                            <div>
+                                <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1">Broker</label>
+                                <select id="filter-broker" onchange="app.applyOrderFilters()" class="w-full border border-gray-200 rounded-lg p-2 text-sm bg-white">
+                                    <option value="">All Brokers</option>
+                                    ${brokers.map(b => `<option value="${b.id}" ${f.brokerId === b.id ? 'selected' : ''}>${b.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            
+                            <!-- Status -->
+                            <div>
+                                <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1">Status</label>
+                                <select id="filter-status" onchange="app.applyOrderFilters()" class="w-full border border-gray-200 rounded-lg p-2 text-sm bg-white">
+                                    <option value="">All Status</option>
+                                    <option value="New" ${f.status === 'New' ? 'selected' : ''}>New</option>
+                                    <option value="In Progress" ${f.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                                    <option value="Completed" ${f.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Date From -->
+                            <div>
+                                <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1">From Date</label>
+                                <input type="text" id="filter-date-from" value="${this.formatDateForInput(f.dateFrom)}" placeholder="dd/mm/yyyy" readonly class="w-full border border-gray-200 rounded-lg p-2 text-sm bg-white cursor-pointer">
+                            </div>
+                            
+                            <!-- Date To -->
+                            <div>
+                                <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1">To Date</label>
+                                <input type="text" id="filter-date-to" value="${this.formatDateForInput(f.dateTo)}" placeholder="dd/mm/yyyy" readonly class="w-full border border-gray-200 rounded-lg p-2 text-sm bg-white cursor-pointer">
+                            </div>
+                            
+                            <!-- Results Count -->
+                            <div class="flex items-end">
+                                <div class="w-full bg-gray-50 rounded-lg p-2 text-center">
+                                    <span class="text-lg font-bold text-indigo-600">${orders.length}</span>
+                                    <span class="text-xs text-gray-500 block">Results</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Mobile Card View -->
                     <div class="md:hidden space-y-4 pb-8" id="orders-list-mobile">
-                        ${orders.map(o => `
+                        ${orders.map(o => {
+                            const orderImages = this.getOrderImages(o);
+                            return `
                             <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 search-item" data-search="${o.id} ${o.customerName}">
                                 <div class="flex justify-between items-start mb-2">
                                     <div>
                                         <div class="font-bold text-lg">#${o.id.split('-').pop()}</div>
-                                        <div class="text-xs text-gray-400">${o.date}</div>
+                                        <div class="text-xs text-gray-400">${this.formatDate(o.date)}</div>
                                     </div>
                                     <span class="px-2 py-1 rounded-full text-[10px] font-bold uppercase ${this.getStatusColor(o.status)}">${o.status}</span>
                                 </div>
@@ -963,6 +1394,17 @@
                                     <div class="font-medium text-gray-800">${o.customerName}</div>
                                     <div class="text-sm text-gray-500">${o.items.length} Items • ${o.priority}</div>
                                 </div>
+                                
+                                <!-- Images Row -->
+                                ${orderImages.length > 0 ? `
+                                <div class="flex gap-2 mb-3 overflow-x-auto pb-2 hide-scrollbar">
+                                    ${orderImages.map((img, idx) => `
+                                        <img src="${img}" onclick="event.stopPropagation(); app.openLightbox(${JSON.stringify(orderImages).replace(/"/g, '&quot;')}, ${idx})" 
+                                             class="w-12 h-12 rounded-lg object-cover cursor-pointer border border-gray-200 flex-shrink-0 active:scale-95 transition-transform">
+                                    `).join('')}
+                                </div>
+                                ` : ''}
+                                
                                 <div class="flex justify-between items-center border-t border-gray-100 pt-3">
                                     <div class="font-bold text-gray-900 text-lg">${this.formatCurrency(this.calculateOrderTotal(o))}</div>
                                     <div class="flex gap-4">
@@ -972,7 +1414,8 @@
                                     </div>
                                 </div>
                             </div>
-                        `).join('')}
+                            `;
+                        }).join('')}
                         ${orders.length === 0 ? '<div class="text-center text-gray-400 py-8">No orders found</div>' : ''}
                     </div>
 
@@ -981,36 +1424,58 @@
                         <table class="min-w-full text-left text-sm whitespace-nowrap" id="orders-table">
                             <thead class="bg-gray-50 text-xs font-semibold text-gray-600 uppercase border-b">
                                 <tr>
-                                    <th class="px-6 py-3">ID</th>
-                                    <th class="px-6 py-3">Date</th>
-                                    <th class="px-6 py-3">Customer</th>
-                                    <th class="px-6 py-3">Items</th>
-                                    <th class="px-6 py-3">Total</th>
-                                    <th class="px-6 py-3">Status</th>
-                                    <th class="px-6 py-3 text-right">Actions</th>
+                                    <th class="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('orders', 'id')">ID ${this.getSortIcon('orders', 'id')}</th>
+                                    <th class="px-4 py-3">Images</th>
+                                    <th class="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('orders', 'date')">Date ${this.getSortIcon('orders', 'date')}</th>
+                                    <th class="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('orders', 'customerName')">Customer ${this.getSortIcon('orders', 'customerName')}</th>
+                                    <th class="px-4 py-3">Items</th>
+                                    <th class="px-4 py-3">Total</th>
+                                    <th class="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('orders', 'status')">Status ${this.getSortIcon('orders', 'status')}</th>
+                                    <th class="px-4 py-3 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
-                                ${orders.map(o => `
+                                ${orders.map(o => {
+                                    const orderImages = this.getOrderImages(o);
+                                    return `
                                     <tr class="hover:bg-gray-50 search-item" data-search="${o.id} ${o.customerName}">
-                                        <td class="px-6 py-3 font-medium text-gray-900">${o.id}</td>
-                                        <td class="px-6 py-3">${o.date}</td>
-                                        <td class="px-6 py-3">${o.customerName}</td>
-                                        <td class="px-6 py-3">${o.items.length}</td>
-                                        <td class="px-6 py-3">${this.formatCurrency(this.calculateOrderTotal(o))}</td>
-                                        <td class="px-6 py-3"><span class="px-2 py-1 rounded-full text-xs ${this.getStatusColor(o.status)}">${o.status}</span></td>
-                                        <td class="px-6 py-3 text-right">
+                                        <td class="px-4 py-3 font-medium text-gray-900">${o.id}</td>
+                                        <td class="px-4 py-3">
+                                            <div class="flex -space-x-2">
+                                                ${orderImages.slice(0, 3).map((img, idx) => `
+                                                    <img src="${img}" onclick="event.stopPropagation(); app.openLightbox(${JSON.stringify(orderImages).replace(/"/g, '&quot;')}, ${idx})" 
+                                                         class="w-8 h-8 rounded-full border-2 border-white object-cover cursor-pointer hover:scale-110 transition-transform shadow-sm">
+                                                `).join('')}
+                                                ${orderImages.length > 3 ? `
+                                                    <div onclick="event.stopPropagation(); app.openLightbox(${JSON.stringify(orderImages).replace(/"/g, '&quot;')}, 3)" 
+                                                         class="w-8 h-8 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-600 cursor-pointer hover:bg-gray-300">
+                                                        +${orderImages.length - 3}
+                                                    </div>
+                                                ` : ''}
+                                                ${orderImages.length === 0 ? '<span class="text-gray-300 text-xs">-</span>' : ''}
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-3">${this.formatDate(o.date)}</td>
+                                        <td class="px-4 py-3">${o.customerName}</td>
+                                        <td class="px-4 py-3">${o.items.length}</td>
+                                        <td class="px-4 py-3">${this.formatCurrency(this.calculateOrderTotal(o))}</td>
+                                        <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs ${this.getStatusColor(o.status)}">${o.status}</span></td>
+                                        <td class="px-4 py-3 text-right">
                                             <button onclick="app.viewOrder('${o.id}')" class="text-gray-600 hover:text-gray-900 mr-2"><i class="fa-solid fa-eye"></i></button>
                                             <button onclick="app.navigateToOrderForm('${o.id}')" class="text-blue-600 hover:text-blue-900 mr-2"><i class="fa-solid fa-pen"></i></button>
                                             <button onclick="app.deleteItem('orders', '${o.id}')" class="text-red-600 hover:text-red-900"><i class="fa-solid fa-trash"></i></button>
                                         </td>
                                     </tr>
-                                `).join('')}
+                                    `;
+                                }).join('')}
                                 ${orders.length === 0 ? '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-400">No orders found</td></tr>' : ''}
                             </tbody>
                         </table>
                     </div>
                 `;
+                
+                // Initialize datepickers after DOM is rendered
+                setTimeout(() => this.initDatePickers(), 50);
             },
 
             renderReports(container) {
@@ -1547,13 +2012,13 @@
 
                         <div class="mt-3 flex items-center justify-between gap-3 border-t border-gray-50 pt-3">
                             <div class="flex items-center -space-x-2">
-                                ${item.images.slice(0,3).map(img => `
-                                    <div class="w-8 h-8 rounded-full border-2 border-white overflow-hidden bg-gray-100">
+                                ${item.images.slice(0,3).map((img, imgIdx) => `
+                                    <div class="w-8 h-8 rounded-full border-2 border-white overflow-hidden bg-gray-100 cursor-pointer hover:scale-110 transition-transform" onclick="event.stopPropagation(); app.openLightbox(${JSON.stringify(item.images).replace(/"/g, '&quot;')}, ${imgIdx})">
                                         <img src="${img}" class="w-full h-full object-cover">
                                     </div>
                                 `).join('')}
                                 ${item.images.length > 3 ? `
-                                    <div class="w-8 h-8 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-500">
+                                    <div class="w-8 h-8 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-500 cursor-pointer hover:bg-gray-200" onclick="event.stopPropagation(); app.openLightbox(${JSON.stringify(item.images).replace(/"/g, '&quot;')}, 3)">
                                         +${item.images.length - 3}
                                     </div>
                                 ` : ''}
@@ -1754,9 +2219,9 @@
                                 <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Images</label>
                                 <div class="flex flex-wrap gap-2">
                                     ${item.images.map((img, idx) => `
-                                        <div class="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200">
-                                            <img src="${img}" class="w-full h-full object-cover" />
-                                            <button onclick="app.removeTempItemImage(${idx})" class="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center rounded-bl-lg text-xs">
+                                        <div class="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 group">
+                                            <img src="${img}" onclick="app.openLightbox(${JSON.stringify(item.images).replace(/"/g, '&quot;')}, ${idx})" class="w-full h-full object-cover cursor-pointer" />
+                                            <button onclick="event.stopPropagation(); app.removeTempItemImage(${idx})" class="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center rounded-bl-lg text-xs">
                                                 <i class="fa-solid fa-times"></i>
                                             </button>
                                         </div>
@@ -1941,7 +2406,7 @@
                                                 <div class="text-xs text-gray-500 mb-2">${fab}${item.millName ? ` • ${item.millName}` : ''}</div>
                                                 ${displayImages.length > 0 ? `
                                                     <div class="flex gap-2 flex-wrap">
-                                                         ${displayImages.map(img => `<img src="${img}" class="w-12 h-12 object-cover rounded-md border border-gray-200">`).join('')}
+                                                         ${displayImages.map((img, imgIdx) => `<img src="${img}" onclick="app.openLightbox(${JSON.stringify(displayImages).replace(/"/g, '&quot;')}, ${imgIdx})" class="w-12 h-12 object-cover rounded-md border border-gray-200 cursor-pointer hover:scale-105 transition-transform">`).join('')}
                                                     </div>
                                                 ` : ''}
                                             </td>
@@ -1986,11 +2451,9 @@
             },
 
             filterOrders(query) {
-                query = query.toLowerCase();
-                document.querySelectorAll('.search-item').forEach(row => {
-                    const text = row.dataset.search.toLowerCase();
-                    row.style.display = text.includes(query) ? '' : 'none';
-                });
+                // Legacy function - now using applyOrderFilters() instead
+                this.orderFilters.search = query;
+                this.renderOrders(document.getElementById('content-area'));
             },
 
             calculateOrderTotal(order) {
@@ -1999,6 +2462,79 @@
 
             formatCurrency(amount) {
                 return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+            },
+
+            formatDate(dateStr) {
+                if (!dateStr) return '-';
+                try {
+                    const date = new Date(dateStr);
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const year = date.getFullYear();
+                    return `${day}/${month}/${year}`;
+                } catch (e) {
+                    return dateStr;
+                }
+            },
+
+            // Sorting state
+            sortState: {
+                orders: { column: 'createdDate', direction: 'desc' },
+                customers: { column: 'name', direction: 'asc' },
+                brokers: { column: 'name', direction: 'asc' }
+            },
+
+            sortData(collection, data, column, direction) {
+                return [...data].sort((a, b) => {
+                    let valA = a[column];
+                    let valB = b[column];
+                    
+                    // Handle dates
+                    if (column.includes('date') || column.includes('Date')) {
+                        valA = new Date(valA || 0).getTime();
+                        valB = new Date(valB || 0).getTime();
+                    }
+                    // Handle numbers
+                    else if (typeof valA === 'number' || column === 'commission') {
+                        valA = Number(valA) || 0;
+                        valB = Number(valB) || 0;
+                    }
+                    // Handle strings
+                    else {
+                        valA = String(valA || '').toLowerCase();
+                        valB = String(valB || '').toLowerCase();
+                    }
+                    
+                    if (valA < valB) return direction === 'asc' ? -1 : 1;
+                    if (valA > valB) return direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            },
+
+            toggleSort(collection, column) {
+                const state = this.sortState[collection];
+                if (state.column === column) {
+                    state.direction = state.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    state.column = column;
+                    state.direction = 'asc';
+                }
+                
+                // Re-render the appropriate view
+                const content = document.getElementById('content-area');
+                switch(collection) {
+                    case 'orders': this.renderOrders(content); break;
+                    case 'customers': this.renderCustomers(content); break;
+                    case 'brokers': this.renderBrokers(content); break;
+                }
+            },
+
+            getSortIcon(collection, column) {
+                const state = this.sortState[collection];
+                if (state.column !== column) return '<i class="fa-solid fa-sort text-gray-300 ml-1"></i>';
+                return state.direction === 'asc' 
+                    ? '<i class="fa-solid fa-sort-up text-indigo-500 ml-1"></i>' 
+                    : '<i class="fa-solid fa-sort-down text-indigo-500 ml-1"></i>';
             },
 
             getStatusColor(status) {
@@ -2020,6 +2556,64 @@
                 toast.textContent = msg;
                 toast.classList.remove('opacity-0');
                 setTimeout(() => toast.classList.add('opacity-0'), 3000);
+            },
+
+            // --- IMAGE LIGHTBOX ---
+            lightboxImages: [],
+            lightboxIndex: 0,
+
+            openLightbox(images, startIndex = 0) {
+                if (!images || images.length === 0) return;
+                this.lightboxImages = Array.isArray(images) ? images : [images];
+                this.lightboxIndex = startIndex;
+                this.updateLightbox();
+                document.getElementById('image-lightbox').classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
+            },
+
+            closeLightbox(event) {
+                if (event && event.target.id !== 'image-lightbox') return;
+                document.getElementById('image-lightbox').classList.add('hidden');
+                document.body.style.overflow = '';
+                this.lightboxImages = [];
+                this.lightboxIndex = 0;
+            },
+
+            updateLightbox() {
+                const img = document.getElementById('lightbox-image');
+                const counter = document.getElementById('lightbox-counter');
+                img.src = this.lightboxImages[this.lightboxIndex];
+                counter.textContent = `${this.lightboxIndex + 1} / ${this.lightboxImages.length}`;
+                counter.style.display = this.lightboxImages.length > 1 ? 'block' : 'none';
+            },
+
+            prevImage(event) {
+                event.stopPropagation();
+                if (this.lightboxImages.length <= 1) return;
+                this.lightboxIndex = (this.lightboxIndex - 1 + this.lightboxImages.length) % this.lightboxImages.length;
+                this.updateLightbox();
+            },
+
+            nextImage(event) {
+                event.stopPropagation();
+                if (this.lightboxImages.length <= 1) return;
+                this.lightboxIndex = (this.lightboxIndex + 1) % this.lightboxImages.length;
+                this.updateLightbox();
+            },
+
+            // Collect all images from an order
+            getOrderImages(order) {
+                const images = [];
+                if (order.items) {
+                    order.items.forEach(item => {
+                        if (item.images && item.images.length) {
+                            images.push(...item.images);
+                        } else if (item.image) {
+                            images.push(item.image);
+                        }
+                    });
+                }
+                return images;
             },
             
             generateReport() {
