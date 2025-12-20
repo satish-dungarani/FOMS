@@ -1094,22 +1094,65 @@
                 `;
             },
 
+            // Customer search state
+            customerSearch: '',
+
+            filterCustomers(query) {
+                this.customerSearch = query.toLowerCase();
+                this.renderCustomers(document.getElementById('content-area'));
+            },
+
+            viewCustomerOrders(customerId) {
+                // Set the filter to this customer and navigate to Orders
+                this.orderFilters.customerId = customerId;
+                this.orderFilters.search = '';
+                this.orderFilters.brokerId = '';
+                this.orderFilters.status = '';
+                this.orderFilters.dateFrom = '';
+                this.orderFilters.dateTo = '';
+                window.location.hash = 'orders';
+            },
+
+            getCustomerOrderCount(customerId) {
+                return Store.getAll('orders').filter(o => o.customerId === customerId).length;
+            },
+
             renderCustomers(container) {
                 let customers = Store.getAll('customers');
                 const state = this.sortState.customers;
+                
+                // Apply search filter
+                if (this.customerSearch) {
+                    const q = this.customerSearch;
+                    customers = customers.filter(c => 
+                        (c.name || '').toLowerCase().includes(q) ||
+                        (c.phone || '').toLowerCase().includes(q) ||
+                        (c.company || '').toLowerCase().includes(q) ||
+                        (c.city || '').toLowerCase().includes(q)
+                    );
+                }
+                
                 customers = this.sortData('customers', customers, state.column, state.direction);
                 
                 container.innerHTML = `
-                    <div class="flex justify-between items-center mb-4 md:mb-6">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 md:mb-6 gap-3">
                         <h2 class="text-2xl font-bold">Parties</h2>
-                        <button onclick="app.openCustomerModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm flex items-center">
-                            <i class="fa-solid fa-plus mr-1"></i> <span class="hidden md:inline">Add Party</span><span class="md:hidden">Add</span>
-                        </button>
+                        <div class="flex gap-2 w-full md:w-auto">
+                            <div class="relative flex-1 md:w-64">
+                                <i class="fa-solid fa-search absolute left-3 top-3 text-gray-400 text-sm"></i>
+                                <input type="text" id="customer-search" value="${this.customerSearch}" placeholder="Search Parties..." oninput="app.filterCustomers(this.value)" class="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            </div>
+                            <button onclick="app.openCustomerModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm flex items-center whitespace-nowrap">
+                                <i class="fa-solid fa-plus mr-1"></i> <span class="hidden md:inline">Add Party</span><span class="md:hidden">Add</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Mobile Card View -->
                     <div class="grid grid-cols-1 md:hidden gap-3">
-                        ${customers.map(c => `
+                        ${customers.map(c => {
+                            const orderCount = this.getCustomerOrderCount(c.id);
+                            return `
                             <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
                                 <div class="flex justify-between items-start">
                                     <div>
@@ -1117,8 +1160,12 @@
                                         <div class="text-sm text-gray-500">${c.company || 'Personal'}</div>
                                     </div>
                                     <div class="flex gap-2">
-                                        <button onclick="app.openCustomerModal('${c.id}')" class="text-blue-600 p-2 bg-blue-50 rounded-full"><i class="fa-solid fa-pen text-xs"></i></button>
-                                        <button onclick="app.deleteItem('customers', '${c.id}')" class="text-red-600 p-2 bg-red-50 rounded-full"><i class="fa-solid fa-trash text-xs"></i></button>
+                                        <button onclick="app.viewCustomerOrders('${c.id}')" class="text-indigo-600 p-2 bg-indigo-50 rounded-full relative" title="View Orders">
+                                            <i class="fa-solid fa-file-lines text-xs"></i>
+                                            ${orderCount > 0 ? `<span class="absolute -top-1 -right-1 bg-indigo-600 text-white text-[10px] font-bold px-1.5 rounded-full">${orderCount}</span>` : ''}
+                                        </button>
+                                        <button onclick="app.openCustomerModal('${c.id}')" class="text-blue-600 p-2 bg-blue-50 rounded-full" title="Edit"><i class="fa-solid fa-pen text-xs"></i></button>
+                                        <button onclick="app.deleteItem('customers', '${c.id}')" class="text-red-600 p-2 bg-red-50 rounded-full" title="Delete"><i class="fa-solid fa-trash text-xs"></i></button>
                                     </div>
                                 </div>
                                 <div class="mt-3 grid grid-cols-2 gap-2 text-sm text-gray-600">
@@ -1126,8 +1173,9 @@
                                     <div class="flex items-center gap-2"><i class="fa-solid fa-location-dot text-gray-400"></i> ${c.city || 'N/A'}</div>
                                 </div>
                             </div>
-                        `).join('')}
-                        ${customers.length === 0 ? '<div class="text-center text-gray-400 py-8 bg-white rounded">No customers found</div>' : ''}
+                            `;
+                        }).join('')}
+                        ${customers.length === 0 ? '<div class="text-center text-gray-400 py-8 bg-white rounded">No parties found</div>' : ''}
                     </div>
 
                     <!-- Desktop Table View -->
@@ -1139,23 +1187,33 @@
                                     <th class="px-6 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('customers', 'phone')">Phone ${this.getSortIcon('customers', 'phone')}</th>
                                     <th class="px-6 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('customers', 'company')">Company ${this.getSortIcon('customers', 'company')}</th>
                                     <th class="px-6 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('customers', 'city')">City ${this.getSortIcon('customers', 'city')}</th>
+                                    <th class="px-6 py-3 text-center">Orders</th>
                                     <th class="px-6 py-3 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
-                                ${customers.map(c => `
+                                ${customers.map(c => {
+                                    const orderCount = this.getCustomerOrderCount(c.id);
+                                    return `
                                     <tr class="hover:bg-gray-50">
                                         <td class="px-6 py-3 font-medium text-gray-900">${c.name || ''}</td>
                                         <td class="px-6 py-3">${c.phone || ''}</td>
                                         <td class="px-6 py-3">${c.company || '-'}</td>
                                         <td class="px-6 py-3">${c.city || '-'}</td>
+                                        <td class="px-6 py-3 text-center">
+                                            <button onclick="app.viewCustomerOrders('${c.id}')" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${orderCount > 0 ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-100 text-gray-500'} transition-colors" title="View Orders">
+                                                <i class="fa-solid fa-file-lines"></i>
+                                                <span>${orderCount}</span>
+                                            </button>
+                                        </td>
                                         <td class="px-6 py-3 text-right">
-                                            <button onclick="app.openCustomerModal('${c.id}')" class="text-blue-600 hover:text-blue-900 mr-3"><i class="fa-solid fa-pen"></i></button>
-                                            <button onclick="app.deleteItem('customers', '${c.id}')" class="text-red-600 hover:text-red-900"><i class="fa-solid fa-trash"></i></button>
+                                            <button onclick="app.openCustomerModal('${c.id}')" class="text-blue-600 hover:text-blue-900 mr-3" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="app.deleteItem('customers', '${c.id}')" class="text-red-600 hover:text-red-900" title="Delete"><i class="fa-solid fa-trash"></i></button>
                                         </td>
                                     </tr>
-                                `).join('')}
-                                ${customers.length === 0 ? '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-400">No customers found</td></tr>' : ''}
+                                    `;
+                                }).join('')}
+                                ${customers.length === 0 ? '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-400">No parties found</td></tr>' : ''}
                             </tbody>
                         </table>
                     </div>
@@ -1292,13 +1350,27 @@
                         <div class="text-xs text-gray-500">Manage dropdowns used in Orders</div>
                     </div>
 
-                    <!-- Child Menu Tabs -->
-                    <div class="bg-white rounded-lg shadow-sm p-2 mb-4 overflow-x-auto hide-scrollbar">
-                        <div class="flex gap-2 min-w-max">
+                    <!-- Mobile: Grid of icon buttons | Desktop: Horizontal scrollable tabs -->
+                    <!-- Mobile View (Grid) -->
+                    <div class="md:hidden grid grid-cols-4 gap-2 mb-4">
+                        ${tabs.map(t => {
+                            const isActive = t.key === active.key;
+                            return `
+                                <button onclick="app.setMastersTab('${t.key}')" class="flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${isActive ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg scale-105' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}">
+                                    <i class="fa-solid ${t.icon} text-lg mb-1"></i>
+                                    <span class="text-[10px] font-bold leading-tight text-center">${t.label}</span>
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+
+                    <!-- Desktop View (Horizontal Tabs) -->
+                    <div class="hidden md:block bg-white rounded-lg shadow-sm p-2 mb-4">
+                        <div class="flex gap-2 flex-wrap">
                             ${tabs.map(t => {
                                 const isActive = t.key === active.key;
                                 return `
-                                    <button onclick="app.setMastersTab('${t.key}')" class="px-3 py-2 rounded-lg text-sm font-bold border transition-colors flex items-center gap-2 ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'}">
+                                    <button onclick="app.setMastersTab('${t.key}')" class="px-4 py-2 rounded-lg text-sm font-bold border transition-colors flex items-center gap-2 ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'}">
                                         <i class="fa-solid ${t.icon}"></i>
                                         <span>${t.label}</span>
                                     </button>
@@ -2290,13 +2362,34 @@
                         width: '',
                         spandexId: '',
                         spandexName: '',
-                        rollCount: '',
                         qty: '',
                         unit: '',
                         rate: '',
                         images: []
                     };
                 }
+
+                // Ensure master dropdown selections are populated when editing legacy items
+                const yarns = Store.data.masters.yarns || [];
+                const greyGsms = Store.data.masters.greyGsms || [];
+                const spandexes = Store.data.masters.spandexes || [];
+
+                if (!this.tempItem.yarnId && this.tempItem.yarn) {
+                    const matchYarn = yarns.find(y => y.name === this.tempItem.yarn);
+                    this.tempItem.yarnId = matchYarn?.id || '';
+                }
+                if (!this.tempItem.greyGsmId && (this.tempItem.greyGsm || this.tempItem.greyGsmName)) {
+                    const matchGsm = greyGsms.find(g => g.name === (this.tempItem.greyGsm || this.tempItem.greyGsmName));
+                    this.tempItem.greyGsmId = matchGsm?.id || '';
+                }
+                if (!this.tempItem.spandexId && (this.tempItem.spandex || this.tempItem.spandexName)) {
+                    const matchSpandex = spandexes.find(s => s.name === (this.tempItem.spandex || this.tempItem.spandexName));
+                    this.tempItem.spandexId = matchSpandex?.id || '';
+                }
+
+                this.tempItem.yarnName = this.tempItem.yarnName || (yarns.find(y => String(y.id) === String(this.tempItem.yarnId))?.name || '');
+                this.tempItem.greyGsmName = this.tempItem.greyGsmName || (greyGsms.find(g => String(g.id) === String(this.tempItem.greyGsmId))?.name || '');
+                this.tempItem.spandexName = this.tempItem.spandexName || (spandexes.find(s => String(s.id) === String(this.tempItem.spandexId))?.name || '');
 
                 if (!this.tempItem.images) this.tempItem.images = [];
                 this.renderItemModal();
@@ -2470,17 +2563,10 @@
                                 </div>
                             </div>
 
-                            <!-- Roll Count -->
-                            <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Roll Count</label>
-                                <input type="number" value="${item.rollCount ?? ''}" oninput="app.updateTempItem('rollCount', this.value)" class="w-full border border-gray-300 rounded-lg p-3" placeholder="e.g. 18" />
-                                <p class="text-[10px] text-gray-400 mt-1">Used in Order Form PDF (Roll No / Weight table)</p>
-                            </div>
-
                             <!-- Qty & Rate -->
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Quantity</label>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Roll Qty</label>
                                     <div class="flex border border-gray-300 rounded-lg overflow-hidden">
                                         <input type="number" value="${item.qty ?? ''}" oninput="app.updateTempItem('qty', this.value)" class="w-full p-3 text-center font-bold outline-none" placeholder="0" />
                                         <select onchange="app.updateTempItem('unit', this.value)" class="bg-gray-50 border-l border-gray-200 px-2 text-xs font-bold text-gray-700 w-24 shrink-0">
@@ -2938,75 +3024,91 @@
 
                 const doc = new jsPDF({ unit: 'pt', format: 'a4' });
                 const pageWidth = doc.internal.pageSize.getWidth();
-                const margin = 36;
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const margin = 40;
 
                 const customer = Store.getById('customers', o.customerId) || {};
                 const broker = Store.getById('brokers', o.brokerId) || {};
 
-                // Header
+                // ========== PREMIUM HEADER ==========
+                // Dark header bar
+                doc.setFillColor(15, 23, 42); // slate-900
+                doc.rect(0, 0, pageWidth, 50, 'F');
+                
+                // Header title
                 doc.setFont('helvetica', 'bold');
-                doc.setFontSize(14);
-                doc.text('ORDER FORM', pageWidth / 2, 40, { align: 'center' });
+                doc.setFontSize(20);
+                doc.setTextColor(255, 255, 255);
+                doc.text('ORDER FORM', pageWidth / 2, 32, { align: 'center' });
 
-                doc.setFontSize(10);
-                doc.setFont('helvetica', 'normal');
-                doc.text(`FIRM NAME: ________________________________`, margin, 62);
+                // Reset text color
+                doc.setTextColor(0, 0, 0);
 
-                // Meta block (2 columns)
-                const leftX = margin;
-                const rightX = pageWidth / 2 + 10;
-                let y = 84;
+                // ========== ORDER DETAILS BOX ==========
+                let currentY = 70;
+                
+                // Order details table with premium styling
+                doc.autoTable({
+                    startY: currentY,
+                    body: [
+                        [
+                            { content: 'CHALLAN NO:', styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } },
+                            { content: String(o.id || ''), styles: { fontStyle: 'bold', textColor: [79, 70, 229] } },
+                            { content: 'DATE:', styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } },
+                            { content: this.formatDate(o.date) }
+                        ],
+                        [
+                            { content: 'PARTY:', styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } },
+                            { content: String(o.customerName || '') },
+                            { content: 'MILL:', styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } },
+                            { content: String(o.millName || '') }
+                        ],
+                        [
+                            { content: 'BROKER:', styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } },
+                            { content: String(broker?.name || '-') },
+                            { content: 'TOTAL:', styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } },
+                            { content: this.formatCurrency(this.calculateOrderTotal(o)).replace('₹', 'Rs. '), styles: { fontStyle: 'bold', textColor: [16, 185, 129] } }
+                        ]
+                    ],
+                    theme: 'grid',
+                    styles: {
+                        font: 'helvetica',
+                        fontSize: 10,
+                        cellPadding: 8,
+                        lineColor: [203, 213, 225],
+                        lineWidth: 0.5,
+                        valign: 'middle'
+                    },
+                    margin: { left: margin, right: margin },
+                    tableWidth: pageWidth - margin * 2,
+                    columnStyles: {
+                        0: { cellWidth: (pageWidth - margin * 2) * 0.15 },
+                        1: { cellWidth: (pageWidth - margin * 2) * 0.35 },
+                        2: { cellWidth: (pageWidth - margin * 2) * 0.15 },
+                        3: { cellWidth: (pageWidth - margin * 2) * 0.35 }
+                    }
+                });
 
-                doc.setFont('helvetica', 'bold');
-                doc.text(`CH NO:`, leftX, y);
-                doc.text(String(o.id || ''), leftX + 52, y);
+                currentY = doc.lastAutoTable.finalY + 20;
 
-                doc.text(`Date:`, rightX, y);
-                doc.setFont('helvetica', 'normal');
-                doc.text(this.formatDate(o.date), rightX + 36, y);
-
-                y += 18;
-                doc.setFont('helvetica', 'bold');
-                doc.text(`PARTY:`, leftX, y);
-                doc.setFont('helvetica', 'normal');
-                doc.text(String(o.customerName || ''), leftX + 52, y);
-
-                doc.setFont('helvetica', 'bold');
-                doc.text(`MILL:`, rightX, y);
-                doc.setFont('helvetica', 'normal');
-                doc.text(String(o.millName || ''), rightX + 36, y);
-
-                y += 18;
-                doc.setFont('helvetica', 'bold');
-                doc.text(`BROKER:`, leftX, y);
-                doc.setFont('helvetica', 'normal');
-                doc.text(String(broker?.name || ''), leftX + 52, y);
-
-                doc.setFont('helvetica', 'bold');
-                doc.text(`TOTAL:`, rightX, y);
-                doc.setFont('helvetica', 'normal');
-                doc.text(this.formatCurrency(this.calculateOrderTotal(o)).replace('₹', 'Rs. '), rightX + 44, y);
-
-                y += 18;
-                doc.setDrawColor(220);
-                doc.line(margin, y, pageWidth - margin, y);
-                y += 16;
-
-                // Items
+                // ========== ITEMS ==========
                 const items = Array.isArray(o.items) ? o.items : [];
 
-                const rollRows = (rollCount) => {
-                    const count = Number(rollCount) || 0;
+                // Roll rows generator (3 columns layout - COLUMN-WISE filling)
+                const buildRollRows = (rollQty) => {
+                    const count = Number(rollQty) || 0;
                     const base = 1001;
-                    const rows = Math.ceil(count / 3);
+                    const columns = 3;
+                    const rows = Math.ceil(count / columns) || 1;
                     const body = [];
                     for (let r = 0; r < rows; r++) {
                         const row = [];
-                        for (let c = 0; c < 3; c++) {
-                            const idx = r + rows * c;
+                        for (let c = 0; c < columns; c++) {
+                            // Column-wise: fill down first column, then second, then third
+                            const idx = c * rows + r;
                             const rollNo = (idx < count) ? (base + idx) : '';
                             row.push(rollNo ? String(rollNo) : '');
-                            row.push('');
+                            row.push(''); // weight column blank
                         }
                         body.push(row);
                     }
@@ -3014,93 +3116,125 @@
                 };
 
                 items.forEach((it, idx) => {
-                    const itemTitleY = y;
+                    // Check if we need a new page
+                    if (currentY > pageHeight - 200) {
+                        doc.addPage();
+                        currentY = 40;
+                    }
+
+                    // ========== ITEM HEADER ==========
+                    doc.setFillColor(79, 70, 229); // indigo-600
+                    doc.rect(margin, currentY, pageWidth - margin * 2, 24, 'F');
                     doc.setFont('helvetica', 'bold');
                     doc.setFontSize(11);
-                    doc.text(`ITEM ${idx + 1}`, margin, itemTitleY);
+                    doc.setTextColor(255, 255, 255);
+                    doc.text(`ITEM ${idx + 1}`, margin + 10, currentY + 16);
+                    doc.text(`Roll Qty: ${Number(it.qty) || 0}`, pageWidth - margin - 10, currentY + 16, { align: 'right' });
+                    doc.setTextColor(0, 0, 0);
+                    
+                    currentY += 28;
 
-                    y += 14;
-                    doc.setFontSize(10);
-
-                    const leftLabelX = margin;
-                    const rightLabelX = pageWidth / 2 + 10;
-
-                    // Specs + picture block
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('YARN', leftLabelX, y);
-                    doc.setFont('helvetica', 'normal');
-                    doc.text(String(it.yarn || ''), leftLabelX + 60, y);
-
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('DESIGN', rightLabelX, y);
-                    doc.setFont('helvetica', 'normal');
-                    doc.text(String(it.designName || ''), rightLabelX + 60, y);
-
-                    y += 14;
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('GREY GSM', leftLabelX, y);
-                    doc.setFont('helvetica', 'normal');
-                    doc.text(String(it.greyGsm || ''), leftLabelX + 60, y);
-
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('PICTURE', rightLabelX, y);
-
-                    // Try to add first image if base64
-                    try {
-                        const img = (it.images && it.images.length) ? it.images[0] : '';
-                        if (img && typeof img === 'string' && img.startsWith('data:image/')) {
-                            // place small thumbnail
-                            const imgX = rightLabelX + 60;
-                            const imgY = y - 10;
-                            doc.addImage(img, 'JPEG', imgX, imgY, 60, 40);
-                        }
-                    } catch (e) {}
-
-                    y += 18;
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('WIDTH', leftLabelX, y);
-                    doc.setFont('helvetica', 'normal');
-                    doc.text(String(it.width || ''), leftLabelX + 60, y);
-
-                    y += 14;
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('SPANDEX', leftLabelX, y);
-                    doc.setFont('helvetica', 'normal');
-                    doc.text(String(it.spandex || ''), leftLabelX + 60, y);
-
-                    y += 16;
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('ROLL', leftLabelX, y);
-                    doc.setFont('helvetica', 'normal');
-                    doc.text(String(Number(it.rollCount) || ''), leftLabelX + 60, y);
-
-                    y += 10;
-
-                    // Roll table
-                    const head = [[
-                        'ROLL NO.', 'WEIGHT',
-                        'ROLL NO.', 'WEIGHT',
-                        'ROLL NO.', 'WEIGHT'
-                    ]];
-
-                    const body = rollRows(it.rollCount);
+                    // ========== ITEM SPECS TABLE ==========
+                    // Left side: YARN, GREY GSM, WIDTH, SPANDEX
+                    // Right side: DESIGN, PICTURE
+                    const itemSpecsBody = [
+                        [
+                            { content: 'YARN', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
+                            { content: String(it.yarn || '-') },
+                            { content: 'DESIGN', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
+                            { content: String(it.designName || '-'), styles: { fontStyle: 'bold' } }
+                        ],
+                        [
+                            { content: 'GREY GSM', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
+                            { content: String(it.greyGsm || '-') },
+                            { content: 'PICTURE', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
+                            { content: '', rowSpan: 3 }
+                        ],
+                        [
+                            { content: 'WIDTH', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
+                            { content: String(it.width || '-') }
+                        ],
+                        [
+                            { content: 'SPANDEX', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
+                            { content: String(it.spandex || '-') }
+                        ]
+                    ];
 
                     doc.autoTable({
-                        startY: y + 6,
-                        head,
-                        body,
+                        startY: currentY,
+                        body: itemSpecsBody,
+                        theme: 'grid',
+                        styles: {
+                            font: 'helvetica',
+                            fontSize: 10,
+                            cellPadding: 8,
+                            lineColor: [203, 213, 225],
+                            lineWidth: 0.5,
+                            valign: 'middle'
+                        },
+                        margin: { left: margin, right: margin },
+                        tableWidth: pageWidth - margin * 2,
+                        columnStyles: {
+                            0: { cellWidth: (pageWidth - margin * 2) * 0.18, halign: 'left' },
+                            1: { cellWidth: (pageWidth - margin * 2) * 0.32, halign: 'left' },
+                            2: { cellWidth: (pageWidth - margin * 2) * 0.18, halign: 'left' },
+                            3: { cellWidth: (pageWidth - margin * 2) * 0.32, halign: 'center' }
+                        },
+                        didDrawCell: (data) => {
+                            // Insert picture in the PICTURE cell (row 1, col 3)
+                            if (data.row.index === 1 && data.column.index === 3) {
+                                const img = (it.images && it.images.length) ? it.images[0] : '';
+                                if (img && typeof img === 'string' && img.startsWith('data:image/')) {
+                                    const cell = data.cell;
+                                    const imgSize = Math.min(cell.width - 16, cell.height * 2.5, 80);
+                                    const imgX = cell.x + (cell.width - imgSize) / 2;
+                                    const imgY = cell.y + 6;
+                                    try {
+                                        doc.addImage(img, 'JPEG', imgX, imgY, imgSize, imgSize * 0.75);
+                                    } catch(e) {
+                                        // Image error, skip
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    currentY = doc.lastAutoTable.finalY + 12;
+
+                    // ========== ROLL/WEIGHT TABLE ==========
+                    const rollHead = [[
+                        { content: 'ROLL NO.', styles: { halign: 'center' } },
+                        { content: 'WEIGHT', styles: { halign: 'center' } },
+                        { content: 'ROLL NO.', styles: { halign: 'center' } },
+                        { content: 'WEIGHT', styles: { halign: 'center' } },
+                        { content: 'ROLL NO.', styles: { halign: 'center' } },
+                        { content: 'WEIGHT', styles: { halign: 'center' } }
+                    ]];
+
+                    const rollBody = buildRollRows(it.qty);
+
+                    doc.autoTable({
+                        startY: currentY,
+                        head: rollHead,
+                        body: rollBody,
                         theme: 'grid',
                         styles: {
                             font: 'helvetica',
                             fontSize: 9,
-                            cellPadding: 4,
-                            lineColor: [210, 210, 210],
-                            lineWidth: 0.5
+                            cellPadding: 6,
+                            lineColor: [203, 213, 225],
+                            lineWidth: 0.5,
+                            halign: 'center',
+                            valign: 'middle'
                         },
                         headStyles: {
-                            fillColor: [245, 245, 245],
-                            textColor: 20,
-                            fontStyle: 'bold'
+                            fillColor: [51, 65, 85], // slate-700
+                            textColor: 255,
+                            fontStyle: 'bold',
+                            fontSize: 9
+                        },
+                        alternateRowStyles: {
+                            fillColor: [248, 250, 252]
                         },
                         margin: { left: margin, right: margin },
                         tableWidth: pageWidth - margin * 2,
@@ -3111,28 +3245,28 @@
                             3: { cellWidth: (pageWidth - margin * 2) / 6 },
                             4: { cellWidth: (pageWidth - margin * 2) / 6 },
                             5: { cellWidth: (pageWidth - margin * 2) / 6 }
-                        },
-                        didDrawPage: (data) => {},
-                        willDrawCell: (data) => {
-                            // If about to overflow page, jsPDF-autotable will add a new page automatically.
                         }
                     });
 
-                    y = doc.lastAutoTable.finalY + 18;
-
-                    // Separator line between items
-                    doc.setDrawColor(235);
-                    doc.line(margin, y - 8, pageWidth - margin, y - 8);
-
-                    // If near bottom, add new page
-                    if (y > doc.internal.pageSize.getHeight() - 120) {
-                        doc.addPage();
-                        y = 60;
-                    }
+                    currentY = doc.lastAutoTable.finalY + 25;
                 });
 
+                // ========== FOOTER ==========
+                const pageCount = doc.internal.getNumberOfPages();
+                for (let i = 1; i <= pageCount; i++) {
+                    doc.setPage(i);
+                    doc.setFontSize(8);
+                    doc.setTextColor(150);
+                    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 20, { align: 'center' });
+                }
+
+                // Open in new tab
                 const filename = `ORDER-FORM-${String(o.id || 'CH')}.pdf`;
-                doc.save(filename);
+                const pdfUrl = doc.output('bloburl');
+                const win = window.open(pdfUrl, '_blank');
+                if (!win) {
+                    doc.save(filename);
+                }
             },
             
             generateReport() {
