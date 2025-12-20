@@ -30,6 +30,10 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- jsPDF (A4 PDF export) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
     
     <!-- Firebase SDKs (Compat version for easier standalone usage) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -229,7 +233,7 @@
                     <i class="fa-solid fa-cart-shopping w-6 mr-2 text-center"></i> Orders
                 </a>
                 <a href="#customers" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="customers">
-                    <i class="fa-solid fa-users w-6 mr-2 text-center"></i> Customers
+                    <i class="fa-solid fa-users w-6 mr-2 text-center"></i> Parties
                 </a>
                 <a href="#brokers" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="brokers">
                     <i class="fa-solid fa-user-tie w-6 mr-2 text-center"></i> Brokers
@@ -303,7 +307,7 @@
 
                 <a href="#customers" class="mobile-nav-link flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-indigo-600 transition-colors" data-target="customers">
                     <i class="fa-solid fa-users text-xl mb-1"></i>
-                    <span class="text-[10px] font-medium">Cust</span>
+                    <span class="text-[10px] font-medium">Party</span>
                 </a>
                 <button onclick="app.toggleMobileMenu()" class="mobile-nav-link flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-indigo-600 transition-colors">
                     <i class="fa-solid fa-bars text-xl mb-1"></i>
@@ -436,6 +440,21 @@
                         {id: 1, name: 'Arvind Mills', status: 'Active'},
                         {id: 2, name: 'Raymond', status: 'Active'},
                         {id: 3, name: 'Welspun', status: 'Active'}
+                    ],
+                    yarns: [
+                        {id: 1, name: '30s', status: 'Active'},
+                        {id: 2, name: '40s', status: 'Active'},
+                        {id: 3, name: '60s', status: 'Active'}
+                    ],
+                    greyGsms: [
+                        {id: 1, name: '160', status: 'Active'},
+                        {id: 2, name: '180', status: 'Active'},
+                        {id: 3, name: '200', status: 'Active'}
+                    ],
+                    spandexes: [
+                        {id: 1, name: 'No', status: 'Active'},
+                        {id: 2, name: '2%', status: 'Active'},
+                        {id: 3, name: '4%', status: 'Active'}
                     ]
                 }
             },
@@ -543,6 +562,21 @@
                         {id: 2, name: 'Raymond', status: 'Active'},
                         {id: 3, name: 'Welspun', status: 'Active'}
                     ];
+                    if (!this.data.masters.yarns) this.data.masters.yarns = [
+                        {id: 1, name: '30s', status: 'Active'},
+                        {id: 2, name: '40s', status: 'Active'},
+                        {id: 3, name: '60s', status: 'Active'}
+                    ];
+                    if (!this.data.masters.greyGsms) this.data.masters.greyGsms = [
+                        {id: 1, name: '160', status: 'Active'},
+                        {id: 2, name: '180', status: 'Active'},
+                        {id: 3, name: '200', status: 'Active'}
+                    ];
+                    if (!this.data.masters.spandexes) this.data.masters.spandexes = [
+                        {id: 1, name: 'No', status: 'Active'},
+                        {id: 2, name: '2%', status: 'Active'},
+                        {id: 3, name: '4%', status: 'Active'}
+                    ];
                     
                     // Save migrated data
                     this.saveLocal();
@@ -576,7 +610,10 @@
                             fabrics: incoming.fabrics || [],
                             units: incoming.units || [],
                             designs: incoming.designs || [],
-                            mills: incoming.mills || []
+                            mills: incoming.mills || [],
+                            yarns: incoming.yarns || [],
+                            greyGsms: incoming.greyGsms || [],
+                            spandexes: incoming.spandexes || []
                         };
                         app.refreshCurrentView();
                     } else {
@@ -601,6 +638,21 @@
                                 {id: 1, name: 'Arvind Mills', status: 'Active'},
                                 {id: 2, name: 'Raymond', status: 'Active'},
                                 {id: 3, name: 'Welspun', status: 'Active'}
+                            ],
+                            yarns: [
+                                {id: 1, name: '30s', status: 'Active'},
+                                {id: 2, name: '40s', status: 'Active'},
+                                {id: 3, name: '60s', status: 'Active'}
+                            ],
+                            greyGsms: [
+                                {id: 1, name: '160', status: 'Active'},
+                                {id: 2, name: '180', status: 'Active'},
+                                {id: 3, name: '200', status: 'Active'}
+                            ],
+                            spandexes: [
+                                {id: 1, name: 'No', status: 'Active'},
+                                {id: 2, name: '2%', status: 'Active'},
+                                {id: 3, name: '4%', status: 'Active'}
                             ]
                         };
                         this.data.masters = defaultMasters;
@@ -646,6 +698,52 @@
                 // 3. Run: gsutil cors set cors.json gs://YOUR-BUCKET-NAME.appspot.com
                 
                 return dataUrl; // Return base64 as-is (stored inline in Firestore)
+            },
+
+            // --- CHALLAN NUMBER GENERATOR ---
+            formatChallanId(year, seq) {
+                const num = String(seq).padStart(4, '0');
+                return `CH-${year}-${num}`;
+            },
+
+            async getNextChallanId(orderDateISO) {
+                const year = (orderDateISO && String(orderDateISO).length >= 4)
+                    ? String(orderDateISO).slice(0, 4)
+                    : String(new Date().getFullYear());
+
+                // Firebase mode: concurrency-safe counter using a transaction
+                if (this.useFirebase && this.db) {
+                    const counterRef = this.db.collection('settings').doc(`challanCounter-${year}`);
+                    const nextSeq = await this.db.runTransaction(async (tx) => {
+                        const snap = await tx.get(counterRef);
+                        let seq = 0;
+                        if (snap.exists) {
+                            const data = snap.data() || {};
+                            seq = Number(data.seq || 0);
+                        }
+                        seq = seq + 1;
+                        tx.set(counterRef, {
+                            year: Number(year),
+                            seq,
+                            updatedAt: new Date().toISOString()
+                        }, { merge: true });
+                        return seq;
+                    });
+                    return this.formatChallanId(year, nextSeq);
+                }
+
+                // Local mode: scan existing orders and pick next seq for the year
+                const rx = new RegExp(`^CH-${year}-(\\d+)$`);
+                let maxSeq = 0;
+                (this.data.orders || []).forEach(o => {
+                    const id = String(o.id || '');
+                    const m = id.match(rx);
+                    if (m && m[1]) {
+                        const n = Number(m[1]);
+                        if (Number.isFinite(n)) maxSeq = Math.max(maxSeq, n);
+                    }
+                });
+                return this.formatChallanId(year, maxSeq + 1);
             },
 
             // --- CRUD Operations ---
@@ -756,6 +854,50 @@
             toggleTheme() {
                 this.applyTheme(this.theme === 'dark' ? 'light' : 'dark');
             },
+
+            // Terminology: Customer -> Party (UI text only, does not change data keys)
+            applyTerminology(root = document.body) {
+                const skipTags = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'CODE', 'PRE']);
+                const walker = document.createTreeWalker(
+                    root,
+                    NodeFilter.SHOW_TEXT,
+                    {
+                        acceptNode: (node) => {
+                            const p = node.parentElement;
+                            if (!p) return NodeFilter.FILTER_REJECT;
+                            if (skipTags.has(p.tagName)) return NodeFilter.FILTER_REJECT;
+                            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                    }
+                );
+
+                const replacements = [
+                    // plural
+                    [/\bCustomers\b/g, 'Parties'],
+                    [/\bcustomers\b/g, 'parties'],
+                    // singular
+                    [/\bCustomer\b/g, 'Party'],
+                    [/\bcustomer\b/g, 'party'],
+                    // short label used in mobile bottom nav
+                    [/\bCust\b/g, 'Party'],
+                    // invoice label
+                    [/\bBill To\b/g, 'Party']
+                ];
+
+                while (walker.nextNode()) {
+                    const n = walker.currentNode;
+                    let t = n.nodeValue;
+                    let changed = false;
+                    for (const [rgx, rep] of replacements) {
+                        if (rgx.test(t)) {
+                            t = t.replace(rgx, rep);
+                            changed = true;
+                        }
+                    }
+                    if (changed) n.nodeValue = t;
+                }
+            },
             
             toggleMobileMenu() {
                 const menu = document.getElementById('mobile-more-menu');
@@ -860,6 +1002,9 @@
                     case 'order-form': this.renderOrderFormPage(content); break;
                     default: this.renderDashboard(content); break;
                 }
+
+                // Apply UI terminology changes after each render
+                this.applyTerminology(document.body);
             },
 
             // --- VIEW RENDERERS ---
@@ -893,7 +1038,7 @@
                             <div class="text-2xl md:text-3xl font-bold">${stats.completed}</div>
                         </div>
                         <div class="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-500">
-                            <div class="text-gray-500 text-xs md:text-sm">Customers</div>
+                            <div class="text-gray-500 text-xs md:text-sm">Parties</div>
                             <div class="text-2xl md:text-3xl font-bold">${stats.customers}</div>
                         </div>
                     </div>
@@ -908,7 +1053,7 @@
                              ${recentOrders.map(o => `
                                 <div class="p-4" onclick="app.viewOrder('${o.id}')">
                                     <div class="flex justify-between mb-1">
-                                        <span class="font-medium">#${o.id.split('-').pop()}</span>
+                                        <span class="font-medium">${o.id}</span>
                                         <span class="text-xs px-2 py-0.5 rounded-full ${this.getStatusColor(o.status)}">${o.status}</span>
                                     </div>
                                     <div class="flex justify-between text-sm text-gray-500">
@@ -924,7 +1069,7 @@
                             <table class="min-w-full text-left text-sm whitespace-nowrap">
                                 <thead class="bg-gray-50 text-xs font-semibold text-gray-600 uppercase">
                                     <tr>
-                                        <th class="px-6 py-3">ID</th>
+                                        <th class="px-6 py-3">Challan No.</th>
                                         <th class="px-6 py-3">Customer</th>
                                         <th class="px-6 py-3">Date</th>
                                         <th class="px-6 py-3">Status</th>
@@ -956,9 +1101,9 @@
                 
                 container.innerHTML = `
                     <div class="flex justify-between items-center mb-4 md:mb-6">
-                        <h2 class="text-2xl font-bold">Customers</h2>
+                        <h2 class="text-2xl font-bold">Parties</h2>
                         <button onclick="app.openCustomerModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm flex items-center">
-                            <i class="fa-solid fa-plus mr-1"></i> <span class="hidden md:inline">Add Customer</span><span class="md:hidden">Add</span>
+                            <i class="fa-solid fa-plus mr-1"></i> <span class="hidden md:inline">Add Party</span><span class="md:hidden">Add</span>
                         </button>
                     </div>
 
@@ -1078,56 +1223,91 @@
                 `;
             },
 
-            renderMasters(container) {
-                const fabrics = Store.data.masters.fabrics || [];
-                const units = Store.data.masters.units || [];
-                const designs = Store.data.masters.designs || [];
-                const mills = Store.data.masters.mills || [];
+            // Masters child-menu state
+            mastersTab: 'designs',
 
-                const renderMasterList = (items, type, icon, title) => `
+            setMastersTab(tab) {
+                this.mastersTab = tab;
+                this.renderMasters(document.getElementById('content-area'));
+            },
+
+            renderMasters(container) {
+                const masters = Store.data.masters || {};
+
+                const tabs = [
+                    { key: 'designs', label: 'Designs', icon: 'fa-palette' },
+                    { key: 'mills', label: 'Mills', icon: 'fa-industry' },
+                    { key: 'yarns', label: 'Yarn', icon: 'fa-ring' },
+                    { key: 'greyGsms', label: 'Grey GSM', icon: 'fa-weight-scale' },
+                    { key: 'spandexes', label: 'Spandex', icon: 'fa-wave-square' },
+                    { key: 'fabrics', label: 'Fabric Types', icon: 'fa-scroll' },
+                    { key: 'units', label: 'Units', icon: 'fa-ruler' }
+                ];
+
+                const active = tabs.find(t => t.key === this.mastersTab) || tabs[0];
+                const items = (masters[active.key] || []);
+
+                const listHtml = `
                     <div class="bg-white rounded-lg shadow-sm p-4">
                         <div class="flex justify-between items-center mb-4 pb-3 border-b">
-                            <h3 class="font-bold text-gray-800"><i class="fa-solid ${icon} text-indigo-500 mr-2"></i>${title}</h3>
-                            <button onclick="app.openMasterModal('${type}')" class="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors">
+                            <h3 class="font-bold text-gray-800 flex items-center gap-2">
+                                <i class="fa-solid ${active.icon} text-indigo-500"></i>
+                                <span>${active.label}</span>
+                            </h3>
+                            <button onclick="app.openMasterModal('${active.key}')" class="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors">
                                 <i class="fa-solid fa-plus mr-1"></i> Add
                             </button>
                         </div>
-                        <ul class="divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                        <ul class="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto">
                             ${items.map(item => `
-                                <li class="py-3 flex justify-between items-center px-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                <li class="py-3 flex justify-between items-center px-2">
                                     <div class="flex items-center gap-2 min-w-0">
                                         <span class="font-medium text-gray-700 truncate">${item.name}</span>
                                         <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${item.status === 'Inactive' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}">${item.status || 'Active'}</span>
                                     </div>
                                     <div class="flex gap-1 flex-shrink-0">
-                                        <button onclick="app.openMasterModal('${type}', ${item.id})" class="text-blue-500 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50" title="Edit">
+                                        <button onclick="app.openMasterModal('${active.key}', ${item.id})" class="text-blue-500 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50" title="Edit">
                                             <i class="fa-solid fa-pen text-sm"></i>
                                         </button>
-                                        <button onclick="app.confirmDeleteMaster('${type}', ${item.id}, '${item.name}')" class="text-red-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50" title="Delete">
+                                        <button onclick="app.confirmDeleteMaster('${active.key}', ${item.id}, '${item.name}')" class="text-red-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50" title="Delete">
                                             <i class="fa-solid fa-trash text-sm"></i>
                                         </button>
                                     </div>
                                 </li>
                             `).join('')}
                             ${items.length === 0 ? `
-                                <li class="py-8 text-center text-gray-400">
-                                    <i class="fa-solid ${icon} text-3xl mb-2 opacity-30"></i>
-                                    <p class="text-sm">No ${title.toLowerCase()} added yet</p>
+                                <li class="py-10 text-center text-gray-400">
+                                    <i class="fa-solid ${active.icon} text-4xl mb-2 opacity-30"></i>
+                                    <p class="text-sm">No ${active.label.toLowerCase()} added yet</p>
                                 </li>
                             ` : ''}
                         </ul>
                         ${items.length > 0 ? `<div class="mt-3 pt-3 border-t text-xs text-gray-400 text-center">${items.length} item${items.length > 1 ? 's' : ''}</div>` : ''}
                     </div>
                 `;
-                
+
                 container.innerHTML = `
-                    <h2 class="text-2xl font-bold mb-6">Masters</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        ${renderMasterList(designs, 'designs', 'fa-palette', 'Designs')}
-                        ${renderMasterList(mills, 'mills', 'fa-industry', 'Mills')}
-                        ${renderMasterList(fabrics, 'fabrics', 'fa-scroll', 'Fabric Types')}
-                        ${renderMasterList(units, 'units', 'fa-ruler', 'Units')}
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                        <h2 class="text-2xl font-bold">Masters</h2>
+                        <div class="text-xs text-gray-500">Manage dropdowns used in Orders</div>
                     </div>
+
+                    <!-- Child Menu Tabs -->
+                    <div class="bg-white rounded-lg shadow-sm p-2 mb-4 overflow-x-auto hide-scrollbar">
+                        <div class="flex gap-2 min-w-max">
+                            ${tabs.map(t => {
+                                const isActive = t.key === active.key;
+                                return `
+                                    <button onclick="app.setMastersTab('${t.key}')" class="px-3 py-2 rounded-lg text-sm font-bold border transition-colors flex items-center gap-2 ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'}">
+                                        <i class="fa-solid ${t.icon}"></i>
+                                        <span>${t.label}</span>
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    ${listHtml}
                 `;
             },
 
@@ -1328,9 +1508,9 @@
                         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                             <!-- Customer -->
                             <div>
-                                <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1">Customer</label>
+                                <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1">Party</label>
                                 <select id="filter-customer" onchange="app.applyOrderFilters()" class="w-full border border-gray-200 rounded-lg p-2 text-sm bg-white">
-                                    <option value="">All Customers</option>
+                                    <option value="">All Parties</option>
                                     ${customers.map(c => `<option value="${c.id}" ${f.customerId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
                                 </select>
                             </div>
@@ -1385,7 +1565,7 @@
                             <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 search-item" data-search="${o.id} ${o.customerName}">
                                 <div class="flex justify-between items-start mb-2">
                                     <div>
-                                        <div class="font-bold text-lg">#${o.id.split('-').pop()}</div>
+                                        <div class="font-bold text-lg">${o.id}</div>
                                         <div class="text-xs text-gray-400">${this.formatDate(o.date)}</div>
                                     </div>
                                     <span class="px-2 py-1 rounded-full text-[10px] font-bold uppercase ${this.getStatusColor(o.status)}">${o.status}</span>
@@ -1408,9 +1588,10 @@
                                 <div class="flex justify-between items-center border-t border-gray-100 pt-3">
                                     <div class="font-bold text-gray-900 text-lg">${this.formatCurrency(this.calculateOrderTotal(o))}</div>
                                     <div class="flex gap-4">
-                                        <button onclick="app.viewOrder('${o.id}')" class="text-gray-500"><i class="fa-solid fa-eye text-lg"></i></button>
-                                        <button onclick="app.navigateToOrderForm('${o.id}')" class="text-blue-600"><i class="fa-solid fa-pen text-lg"></i></button>
-                                        <button onclick="app.deleteItem('orders', '${o.id}')" class="text-red-500"><i class="fa-solid fa-trash text-lg"></i></button>
+                                        <button onclick="app.downloadOrderFormPdf('${o.id}')" class="text-indigo-600" title="PDF"><i class="fa-solid fa-file-arrow-down text-lg"></i></button>
+                                        <button onclick="app.viewOrder('${o.id}')" class="text-gray-500" title="View"><i class="fa-solid fa-eye text-lg"></i></button>
+                                        <button onclick="app.navigateToOrderForm('${o.id}')" class="text-blue-600" title="Edit"><i class="fa-solid fa-pen text-lg"></i></button>
+                                        <button onclick="app.deleteItem('orders', '${o.id}')" class="text-red-500" title="Delete"><i class="fa-solid fa-trash text-lg"></i></button>
                                     </div>
                                 </div>
                             </div>
@@ -1424,7 +1605,7 @@
                         <table class="min-w-full text-left text-sm whitespace-nowrap" id="orders-table">
                             <thead class="bg-gray-50 text-xs font-semibold text-gray-600 uppercase border-b">
                                 <tr>
-                                    <th class="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('orders', 'id')">ID ${this.getSortIcon('orders', 'id')}</th>
+                                    <th class="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('orders', 'id')">Challan No. ${this.getSortIcon('orders', 'id')}</th>
                                     <th class="px-4 py-3">Images</th>
                                     <th class="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('orders', 'date')">Date ${this.getSortIcon('orders', 'date')}</th>
                                     <th class="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none" onclick="app.toggleSort('orders', 'customerName')">Customer ${this.getSortIcon('orders', 'customerName')}</th>
@@ -1461,9 +1642,10 @@
                                         <td class="px-4 py-3">${this.formatCurrency(this.calculateOrderTotal(o))}</td>
                                         <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs ${this.getStatusColor(o.status)}">${o.status}</span></td>
                                         <td class="px-4 py-3 text-right">
-                                            <button onclick="app.viewOrder('${o.id}')" class="text-gray-600 hover:text-gray-900 mr-2"><i class="fa-solid fa-eye"></i></button>
-                                            <button onclick="app.navigateToOrderForm('${o.id}')" class="text-blue-600 hover:text-blue-900 mr-2"><i class="fa-solid fa-pen"></i></button>
-                                            <button onclick="app.deleteItem('orders', '${o.id}')" class="text-red-600 hover:text-red-900"><i class="fa-solid fa-trash"></i></button>
+                                            <button onclick="app.downloadOrderFormPdf('${o.id}')" class="text-indigo-600 hover:text-indigo-900 mr-2" title="Download Order Form PDF"><i class="fa-solid fa-file-arrow-down"></i></button>
+                                            <button onclick="app.viewOrder('${o.id}')" class="text-gray-600 hover:text-gray-900 mr-2" title="View Challan"><i class="fa-solid fa-eye"></i></button>
+                                            <button onclick="app.navigateToOrderForm('${o.id}')" class="text-blue-600 hover:text-blue-900 mr-2" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="app.deleteItem('orders', '${o.id}')" class="text-red-600 hover:text-red-900" title="Delete"><i class="fa-solid fa-trash"></i></button>
                                         </td>
                                     </tr>
                                     `;
@@ -1505,6 +1687,8 @@
                 const modal = document.getElementById('modal-container');
                 document.getElementById('modal-content').innerHTML = contentHtml;
                 modal.classList.remove('hidden');
+                // Apply UI terminology changes inside modals too
+                this.applyTerminology(modal);
             },
 
             closeModal() {
@@ -1615,7 +1799,7 @@
                 const formHtml = `
                     <div class="flex flex-col h-full">
                         <div class="flex justify-between items-center border-b pb-3 mb-4">
-                            <h3 class="text-lg font-bold text-gray-900">${isEdit ? 'Edit' : 'New'} Customer</h3>
+                            <h3 class="text-lg font-bold text-gray-900">${isEdit ? 'Edit' : 'New'} Party</h3>
                             <button onclick="app.closeModal()" class="text-gray-500 p-2"><i class="fa-solid fa-times text-xl"></i></button>
                         </div>
                         <div class="flex-1 overflow-y-auto pr-1">
@@ -1628,7 +1812,7 @@
                             </form>
                         </div>
                         <div class="pt-4 mt-auto border-t">
-                             <button onclick="document.getElementById('cust-form').dispatchEvent(new Event('submit'))" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold text-lg shadow-lg">Save Customer</button>
+                             <button onclick="document.getElementById('cust-form').dispatchEvent(new Event('submit'))" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold text-lg shadow-lg">Save Party</button>
                         </div>
                     </div>
                 `;
@@ -1704,12 +1888,18 @@
                 const typeLabels = {
                     'designs': 'Design',
                     'mills': 'Mill',
+                    'yarns': 'Yarn',
+                    'greyGsms': 'Grey GSM',
+                    'spandexes': 'Spandex',
                     'fabrics': 'Fabric Type',
                     'units': 'Unit'
                 };
                 const typeIcons = {
                     'designs': 'fa-palette',
                     'mills': 'fa-industry',
+                    'yarns': 'fa-ring',
+                    'greyGsms': 'fa-weight-scale',
+                    'spandexes': 'fa-wave-square',
                     'fabrics': 'fa-scroll',
                     'units': 'fa-ruler'
                 };
@@ -1826,6 +2016,9 @@
                 const typeLabels = {
                     'designs': 'design',
                     'mills': 'mill',
+                    'yarns': 'yarn',
+                    'greyGsms': 'grey gsm',
+                    'spandexes': 'spandex',
                     'fabrics': 'fabric type',
                     'units': 'unit'
                 };
@@ -1871,8 +2064,8 @@
             renderOrderFormPage(container) {
                 const customers = Store.getAll('customers');
                 const brokers = Store.getAll('brokers');
-                const fabrics = Store.data.masters.fabrics;
                 const units = Store.data.masters.units;
+                const mills = Store.data.masters.mills || [];
                 const isEdit = !!this.editingOrderId;
 
                 if (customers.length === 0) {
@@ -1889,6 +2082,15 @@
                         else this.tempOrder = this.createEmptyOrder(customers);
                     } else {
                         this.tempOrder = this.createEmptyOrder(customers);
+                    }
+                }
+
+                // Migration: move mill from items -> order level (for old data)
+                if (this.tempOrder && (!this.tempOrder.millId && !this.tempOrder.millName)) {
+                    const firstItem = (this.tempOrder.items || [])[0];
+                    if (firstItem && (firstItem.millId || firstItem.millName)) {
+                        this.tempOrder.millId = firstItem.millId || '';
+                        this.tempOrder.millName = firstItem.millName || '';
                     }
                 }
                 
@@ -1927,11 +2129,22 @@
                                         </select>
                                     </div>
                                 </div>
-                                <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Customer</label>
-                                    <select onchange="app.updateTempOrder('customerId', this.value)" class="w-full border-gray-300 rounded-lg p-3 bg-gray-50 border focus:ring-2 focus:ring-indigo-200 outline-none transition-all">
-                                        ${customers.map(c => `<option value="${c.id}" ${c.id === o.customerId ? 'selected' : ''}>${c.name}</option>`).join('')}
-                                    </select>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Party</label>
+                                        <select onchange="app.updateTempOrder('customerId', this.value)" class="w-full border-gray-300 rounded-lg p-3 bg-gray-50 border focus:ring-2 focus:ring-indigo-200 outline-none transition-all">
+                                            <option value="" ${!o.customerId ? 'selected' : ''}>-- Select Party --</option>
+                                            ${customers.map(c => `<option value="${c.id}" ${c.id === o.customerId ? 'selected' : ''}>${c.name}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Mill</label>
+                                        <select onchange="app.updateTempOrderMill(this.value)" class="w-full border-gray-300 rounded-lg p-3 bg-gray-50 border focus:ring-2 focus:ring-indigo-200 outline-none transition-all">
+                                            <option value="" ${!o.millId ? 'selected' : ''}>-- Select Mill --</option>
+                                            ${(mills || []).map(m => `<option value="${m.id}" ${String(m.id) === String(o.millId) ? 'selected' : ''}>${m.name}</option>`).join('')}
+                                        </select>
+                                        ${(mills || []).length === 0 ? '<p class="text-xs text-red-500 mt-1">Please add mills in Masters first</p>' : ''}
+                                    </div>
                                 </div>
                                 <div>
                                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Broker (Optional)</label>
@@ -1956,7 +2169,7 @@
                                 </button>
 
                                 <div id="order-items-container" class="grid grid-cols-1 md:grid-cols-2 gap-3 pb-10">
-                                    ${o.items.map((item, index) => this.renderOrderItemSummary(item, index, fabrics)).join('')}
+                                    ${o.items.map((item, index) => this.renderOrderItemSummary(item, index)).join('')}
                                     ${o.items.length === 0 ? '<div class="md:col-span-2 p-8 text-center text-gray-400">No items added yet</div>' : ''}
                                 </div>
                             </div>
@@ -1978,9 +2191,12 @@
                  return {
                     id: '', 
                     date: new Date().toISOString().split('T')[0],
-                    customerId: customers[0]?.id || '',
-                    customerName: customers[0]?.name || '',
+                    // keep defaults empty even if required
+                    customerId: '',
+                    customerName: '',
                     brokerId: '',
+                    millId: '',
+                    millName: '',
                     status: 'New',
                     priority: 'Normal',
                     items: []
@@ -1988,21 +2204,28 @@
             },
 
             // Item cards inside Order Form (summary view)
-            renderOrderItemSummary(item, index, fabrics) {
+            renderOrderItemSummary(item, index) {
                 if (!item.images) item.images = [];
                 if (item.image) { item.images.push(item.image); delete item.image; }
 
-                const fabName = fabrics.find(f => f.id == item.fabricId)?.name || 'Unknown Fabric';
                 const qty = Number(item.qty || 0);
                 const rate = Number(item.rate || 0);
                 const total = qty * rate;
+
+                const metaParts = [
+                    item.yarn ? `Yarn: ${item.yarn}` : '',
+                    (item.greyGsm !== undefined && item.greyGsm !== '' && item.greyGsm !== null) ? `Grey GSM: ${item.greyGsm}` : '',
+                    (item.width !== undefined && item.width !== '' && item.width !== null) ? `Width: ${item.width}` : '',
+                    (item.spandex !== undefined && item.spandex !== '' && item.spandex !== null) ? `Spandex: ${item.spandex}` : '',
+                    (item.rollCount !== undefined && item.rollCount !== '' && item.rollCount !== null) ? `Roll: ${item.rollCount}` : ''
+                ].filter(Boolean);
 
                 return `
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:border-indigo-200 hover:shadow-md transition-all">
                         <div class="flex justify-between items-start gap-3">
                             <div class="min-w-0">
                                 <div class="font-bold text-gray-900 truncate">${item.designName || 'Untitled Design'}</div>
-                                <div class="text-xs text-gray-500 mt-0.5">${fabName}${item.millName ? ` • ${item.millName}` : ''}</div>
+                                ${metaParts.length ? `<div class="text-xs text-gray-500 mt-1">${metaParts.join(' • ')}</div>` : `<div class="text-xs text-gray-400 mt-1">No specs</div>`}
                                 <div class="text-xs text-gray-400 mt-1">${qty} ${item.unit || ''} × ₹${rate}</div>
                             </div>
                             <div class="text-right flex-shrink-0">
@@ -2047,16 +2270,29 @@
 
                 if (this.editingItemIndex !== null) {
                     const existing = this.tempOrder.items[this.editingItemIndex];
+                    // Migration: strip mill fields from item into order if still present
+                    if (existing && (!this.tempOrder.millId && !this.tempOrder.millName) && (existing.millId || existing.millName)) {
+                        this.tempOrder.millId = existing.millId || '';
+                        this.tempOrder.millName = existing.millName || '';
+                    }
                     this.tempItem = JSON.parse(JSON.stringify(existing));
+                    delete this.tempItem.millId;
+                    delete this.tempItem.millName;
                 } else {
+                    // keep defaults empty even if required (user must choose)
                     this.tempItem = {
-                        designId: designs[0]?.id || '',
-                        designName: designs[0]?.name || '',
-                        fabricId: fabrics[0]?.id || '',
-                        millId: mills[0]?.id || '',
-                        millName: mills[0]?.name || '',
+                        designId: '',
+                        designName: '',
+                        yarnId: '',
+                        yarnName: '',
+                        greyGsmId: '',
+                        greyGsmName: '',
+                        width: '',
+                        spandexId: '',
+                        spandexName: '',
+                        rollCount: '',
                         qty: '',
-                        unit: units[0]?.name || 'Meters',
+                        unit: '',
                         rate: '',
                         images: []
                     };
@@ -2089,6 +2325,30 @@
                 const design = designs.find(d => d.id == designId);
                 this.tempItem.designId = designId;
                 this.tempItem.designName = design ? design.name : '';
+            },
+
+            updateTempItemYarn(yarnId) {
+                if (!this.tempItem) return;
+                const yarns = Store.data.masters.yarns || [];
+                const yarn = yarns.find(y => String(y.id) === String(yarnId));
+                this.tempItem.yarnId = yarnId;
+                this.tempItem.yarnName = yarn ? yarn.name : '';
+            },
+
+            updateTempItemGreyGsm(greyGsmId) {
+                if (!this.tempItem) return;
+                const gsms = Store.data.masters.greyGsms || [];
+                const gsm = gsms.find(g => String(g.id) === String(greyGsmId));
+                this.tempItem.greyGsmId = greyGsmId;
+                this.tempItem.greyGsmName = gsm ? gsm.name : '';
+            },
+
+            updateTempItemSpandex(spandexId) {
+                if (!this.tempItem) return;
+                const sps = Store.data.masters.spandexes || [];
+                const sp = sps.find(s => String(s.id) === String(spandexId));
+                this.tempItem.spandexId = spandexId;
+                this.tempItem.spandexName = sp ? sp.name : '';
             },
 
             updateTempItemMill(millId) {
@@ -2126,9 +2386,14 @@
 
                 // basic validation
                 if (!item.designId) return alert('Design is required. Please add designs in Masters first.');
-                if (!item.millId) return alert('Mill is required. Please add mills in Masters first.');
-                if (!item.fabricId) return alert('Fabric is required.');
 
+                // If user doesn't choose unit, fall back to first unit
+                if (!item.unit) {
+                    const units = Store.data.masters.units || [];
+                    item.unit = units[0]?.name || 'Meters';
+                }
+
+                item.rollCount = Number(item.rollCount || 0);
                 item.qty = Number(item.qty || 0);
                 item.rate = Number(item.rate || 0);
 
@@ -2144,10 +2409,11 @@
 
             renderItemModal() {
                 const item = this.tempItem;
-                const fabrics = Store.data.masters.fabrics || [];
                 const units = Store.data.masters.units || [];
                 const designs = Store.data.masters.designs || [];
-                const mills = Store.data.masters.mills || [];
+                const yarns = Store.data.masters.yarns || [];
+                const gsms = Store.data.masters.greyGsms || [];
+                const spandexes = Store.data.masters.spandexes || [];
 
                 const total = (Number(item.qty || 0) * Number(item.rate || 0));
 
@@ -2156,7 +2422,7 @@
                         <div class="flex items-center justify-between border-b pb-3 mb-4">
                             <div>
                                 <h3 class="text-lg font-bold text-gray-900">${this.editingItemIndex !== null ? 'Edit' : 'Add'} Item</h3>
-                                <p class="text-xs text-gray-500">Select design, mill, fabric and enter quantity</p>
+                                <p class="text-xs text-gray-500">Select design and enter specs</p>
                             </div>
                             <button onclick="app.closeItemModal()" class="text-gray-500 p-2"><i class="fa-solid fa-times text-xl"></i></button>
                         </div>
@@ -2166,28 +2432,49 @@
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Design *</label>
                                 <select onchange="app.updateTempItemDesign(this.value)" class="w-full border border-gray-300 rounded-lg p-3 bg-white">
-                                    ${designs.length === 0 ? '<option value="">-- No designs available --</option>' : ''}
-                                    ${designs.map(d => `<option value="${d.id}" ${d.id == item.designId ? 'selected' : ''}>${d.name}</option>`).join('')}
+                                    ${designs.length === 0 ? '<option value="">-- No designs available --</option>' : '<option value="">-- Select Design --</option>'}
+                                    ${designs.map(d => `<option value="${d.id}" ${String(d.id) === String(item.designId) ? 'selected' : ''}>${d.name}</option>`).join('')}
                                 </select>
                                 ${designs.length === 0 ? '<p class="text-xs text-red-500 mt-1">Please add designs in Masters first</p>' : ''}
                             </div>
 
-                            <!-- Mill & Fabric -->
+                            <!-- Specs -->
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Mill *</label>
-                                    <select onchange="app.updateTempItemMill(this.value)" class="w-full border border-gray-300 rounded-lg p-3 bg-white">
-                                        ${mills.length === 0 ? '<option value="">-- No mills available --</option>' : ''}
-                                        ${mills.map(m => `<option value="${m.id}" ${m.id == item.millId ? 'selected' : ''}>${m.name}</option>`).join('')}
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Yarn</label>
+                                    <select onchange="app.updateTempItemYarn(this.value)" class="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                                        ${yarns.length === 0 ? '<option value="">-- No yarns available --</option>' : '<option value="">-- Select Yarn --</option>'}
+                                        ${yarns.map(y => `<option value="${y.id}" ${String(y.id) === String(item.yarnId) ? 'selected' : ''}>${y.name}</option>`).join('')}
                                     </select>
-                                    ${mills.length === 0 ? '<p class="text-xs text-red-500 mt-1">Please add mills in Masters first</p>' : ''}
+                                    ${yarns.length === 0 ? '<p class="text-xs text-red-500 mt-1">Please add yarns in Masters first</p>' : ''}
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Fabric *</label>
-                                    <select onchange="app.updateTempItem('fabricId', this.value)" class="w-full border border-gray-300 rounded-lg p-3 bg-white">
-                                        ${fabrics.map(f => `<option value="${f.id}" ${f.id == item.fabricId ? 'selected' : ''}>${f.name}</option>`).join('')}
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Grey GSM</label>
+                                    <select onchange="app.updateTempItemGreyGsm(this.value)" class="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                                        ${gsms.length === 0 ? '<option value="">-- No GSM values available --</option>' : '<option value="">-- Select GSM --</option>'}
+                                        ${gsms.map(g => `<option value="${g.id}" ${String(g.id) === String(item.greyGsmId) ? 'selected' : ''}>${g.name}</option>`).join('')}
                                     </select>
+                                    ${gsms.length === 0 ? '<p class="text-xs text-red-500 mt-1">Please add GSM values in Masters first</p>' : ''}
                                 </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Width</label>
+                                    <input type="text" value="${item.width ?? ''}" oninput="app.updateTempItem('width', this.value)" class="w-full border border-gray-300 rounded-lg p-3" placeholder="e.g. 58" />
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Spandex</label>
+                                    <select onchange="app.updateTempItemSpandex(this.value)" class="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                                        ${spandexes.length === 0 ? '<option value="">-- No spandex values available --</option>' : '<option value="">-- Select Spandex --</option>'}
+                                        ${spandexes.map(s => `<option value="${s.id}" ${String(s.id) === String(item.spandexId) ? 'selected' : ''}>${s.name}</option>`).join('')}
+                                    </select>
+                                    ${spandexes.length === 0 ? '<p class="text-xs text-red-500 mt-1">Please add spandex values in Masters first</p>' : ''}
+                                </div>
+                            </div>
+
+                            <!-- Roll Count -->
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Roll Count</label>
+                                <input type="number" value="${item.rollCount ?? ''}" oninput="app.updateTempItem('rollCount', this.value)" class="w-full border border-gray-300 rounded-lg p-3" placeholder="e.g. 18" />
+                                <p class="text-[10px] text-gray-400 mt-1">Used in Order Form PDF (Roll No / Weight table)</p>
                             </div>
 
                             <!-- Qty & Rate -->
@@ -2197,6 +2484,7 @@
                                     <div class="flex border border-gray-300 rounded-lg overflow-hidden">
                                         <input type="number" value="${item.qty ?? ''}" oninput="app.updateTempItem('qty', this.value)" class="w-full p-3 text-center font-bold outline-none" placeholder="0" />
                                         <select onchange="app.updateTempItem('unit', this.value)" class="bg-gray-50 border-l border-gray-200 px-2 text-xs font-bold text-gray-700 w-24 shrink-0">
+                                            <option value="">-- Unit --</option>
                                             ${units.map(u => `<option value="${u.name}" ${u.name == item.unit ? 'selected' : ''}>${u.name}</option>`).join('')}
                                         </select>
                                     </div>
@@ -2252,6 +2540,14 @@
                 }
             },
 
+            updateTempOrderMill(millId) {
+                if (!this.tempOrder) return;
+                this.tempOrder.millId = millId;
+                const mills = Store.data.masters.mills || [];
+                const mill = mills.find(m => String(m.id) === String(millId));
+                this.tempOrder.millName = mill ? mill.name : '';
+            },
+
             // Legacy inline item editing functions were replaced with a dedicated Item Modal.
             // Use openItemModal() to add/edit items.
 
@@ -2263,14 +2559,15 @@
 
             async saveOrder(id) {
                 const o = this.tempOrder;
-                if(!o.customerId) return alert('Customer required');
+                if(!o.customerId) return alert('Party required');
+                if(!o.millId) return alert('Mill required');
                 if(o.items.length === 0) return alert('At least one item required');
 
                 this.toggleLoading(true);
                 try {
                     // Ensure IDs
                     const isNew = !id;
-                    const orderId = id || ('ORD-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Math.random()*1000));
+                    const orderId = id || (await Store.getNextChallanId(o.date));
 
                     // Deep clone to avoid mutating UI state while uploading
                     const payload = JSON.parse(JSON.stringify(o));
@@ -2294,9 +2591,11 @@
                         return {
                             designId: String(it.designId || ''),
                             designName: String(it.designName || ''),
-                            fabricId: String(it.fabricId || ''),
-                            millId: String(it.millId || ''),
-                            millName: String(it.millName || ''),
+                            yarn: String(it.yarnName || it.yarn || ''),
+                            greyGsm: String(it.greyGsmName || it.greyGsm || ''),
+                            width: String(it.width || ''),
+                            spandex: String(it.spandexName || it.spandex || ''),
+                            rollCount: Number(it.rollCount) || 0,
                             qty: Number(it.qty) || 0,
                             unit: String(it.unit || 'Meters'),
                             rate: Number(it.rate) || 0,
@@ -2350,17 +2649,16 @@
                 if(!o) return;
                 const customer = Store.getById('customers', o.customerId) || {};
                 const broker = Store.getById('brokers', o.brokerId);
-                const fabrics = Store.data.masters.fabrics;
 
                 const html = `
                     <div class="print-area bg-white p-6 max-w-3xl mx-auto h-full flex flex-col">
                         <div class="flex justify-between items-start mb-6 border-b pb-4">
                             <div>
-                                <h1 class="text-2xl font-bold text-gray-800">INVOICE</h1>
-                                <p class="text-gray-500 text-sm">#${o.id.split('-').pop()}</p>
+                                <h1 class="text-2xl font-bold text-gray-800">CHALLAN</h1>
+                                <p class="text-gray-500 text-sm">${o.id}</p>
                             </div>
                             <div class="text-right">
-                                <p class="text-sm font-bold">${o.date}</p>
+                                <p class="text-sm font-bold">${this.formatDate(o.date)}</p>
                                 <span class="text-xs px-2 py-1 bg-gray-100 rounded border border-gray-200">${o.status}</span>
                             </div>
                         </div>
@@ -2369,6 +2667,7 @@
                             <div>
                                 <h3 class="text-xs font-bold text-gray-400 uppercase mb-1">Bill To</h3>
                                 <p class="font-bold text-gray-800">${o.customerName}</p>
+                                ${o.millName ? `<p class="text-sm text-gray-600"><span class="font-semibold">Mill:</span> ${o.millName}</p>` : ''}
                                 <p class="text-sm text-gray-600">${customer.phone}</p>
                                 <p class="text-sm text-gray-600 whitespace-pre-line">${customer.address || ''}</p>
                             </div>
@@ -2392,18 +2691,24 @@
                                 </thead>
                                 <tbody class="divide-y">
                                     ${o.items.map((item) => {
-                                        const fab = fabrics.find(f => f.id == item.fabricId)?.name || 'Unknown';
-                                        
                                         // Handle legacy single image or new array
                                         let displayImages = [];
                                         if (item.images && item.images.length) displayImages = item.images;
                                         else if (item.image) displayImages = [item.image];
 
+                                        const specs = [
+                                            item.yarn ? `Yarn: ${item.yarn}` : '',
+                                            (item.greyGsm !== undefined && item.greyGsm !== '' && item.greyGsm !== null) ? `Grey GSM: ${item.greyGsm}` : '',
+                                            (item.width !== undefined && item.width !== '' && item.width !== null) ? `Width: ${item.width}` : '',
+                                            (item.spandex !== undefined && item.spandex !== '' && item.spandex !== null) ? `Spandex: ${item.spandex}` : '',
+                                            (item.rollCount !== undefined && item.rollCount !== '' && item.rollCount !== null && Number(item.rollCount) > 0) ? `Roll: ${item.rollCount}` : ''
+                                        ].filter(Boolean);
+
                                         return `
                                         <tr>
                                             <td class="p-3 align-top">
                                                 <div class="font-bold text-gray-800">${item.designName || 'No Design Name'}</div>
-                                                <div class="text-xs text-gray-500 mb-2">${fab}${item.millName ? ` • ${item.millName}` : ''}</div>
+                                                ${specs.length ? `<div class="text-xs text-gray-500 mb-2">${specs.join(' • ')}</div>` : `<div class="text-xs text-gray-400 mb-2">No specs</div>`}
                                                 ${displayImages.length > 0 ? `
                                                     <div class="flex gap-2 flex-wrap">
                                                          ${displayImages.map((img, imgIdx) => `<img src="${img}" onclick="app.openLightbox(${JSON.stringify(displayImages).replace(/"/g, '&quot;')}, ${imgIdx})" class="w-12 h-12 object-cover rounded-md border border-gray-200 cursor-pointer hover:scale-105 transition-transform">`).join('')}
@@ -2614,6 +2919,220 @@
                     });
                 }
                 return images;
+            },
+            
+            // --- ORDER FORM PDF (A4) ---
+            downloadOrderFormPdf(orderId) {
+                const o = Store.getById('orders', orderId);
+                if (!o) {
+                    this.showToast('Order not found');
+                    return;
+                }
+
+                // jsPDF UMD access
+                const { jsPDF } = window.jspdf || {};
+                if (!jsPDF) {
+                    alert('PDF library not loaded. Please check internet connection.');
+                    return;
+                }
+
+                const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const margin = 36;
+
+                const customer = Store.getById('customers', o.customerId) || {};
+                const broker = Store.getById('brokers', o.brokerId) || {};
+
+                // Header
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(14);
+                doc.text('ORDER FORM', pageWidth / 2, 40, { align: 'center' });
+
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`FIRM NAME: ________________________________`, margin, 62);
+
+                // Meta block (2 columns)
+                const leftX = margin;
+                const rightX = pageWidth / 2 + 10;
+                let y = 84;
+
+                doc.setFont('helvetica', 'bold');
+                doc.text(`CH NO:`, leftX, y);
+                doc.text(String(o.id || ''), leftX + 52, y);
+
+                doc.text(`Date:`, rightX, y);
+                doc.setFont('helvetica', 'normal');
+                doc.text(this.formatDate(o.date), rightX + 36, y);
+
+                y += 18;
+                doc.setFont('helvetica', 'bold');
+                doc.text(`PARTY:`, leftX, y);
+                doc.setFont('helvetica', 'normal');
+                doc.text(String(o.customerName || ''), leftX + 52, y);
+
+                doc.setFont('helvetica', 'bold');
+                doc.text(`MILL:`, rightX, y);
+                doc.setFont('helvetica', 'normal');
+                doc.text(String(o.millName || ''), rightX + 36, y);
+
+                y += 18;
+                doc.setFont('helvetica', 'bold');
+                doc.text(`BROKER:`, leftX, y);
+                doc.setFont('helvetica', 'normal');
+                doc.text(String(broker?.name || ''), leftX + 52, y);
+
+                doc.setFont('helvetica', 'bold');
+                doc.text(`TOTAL:`, rightX, y);
+                doc.setFont('helvetica', 'normal');
+                doc.text(this.formatCurrency(this.calculateOrderTotal(o)).replace('₹', 'Rs. '), rightX + 44, y);
+
+                y += 18;
+                doc.setDrawColor(220);
+                doc.line(margin, y, pageWidth - margin, y);
+                y += 16;
+
+                // Items
+                const items = Array.isArray(o.items) ? o.items : [];
+
+                const rollRows = (rollCount) => {
+                    const count = Number(rollCount) || 0;
+                    const base = 1001;
+                    const rows = Math.ceil(count / 3);
+                    const body = [];
+                    for (let r = 0; r < rows; r++) {
+                        const row = [];
+                        for (let c = 0; c < 3; c++) {
+                            const idx = r + rows * c;
+                            const rollNo = (idx < count) ? (base + idx) : '';
+                            row.push(rollNo ? String(rollNo) : '');
+                            row.push('');
+                        }
+                        body.push(row);
+                    }
+                    return body;
+                };
+
+                items.forEach((it, idx) => {
+                    const itemTitleY = y;
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(11);
+                    doc.text(`ITEM ${idx + 1}`, margin, itemTitleY);
+
+                    y += 14;
+                    doc.setFontSize(10);
+
+                    const leftLabelX = margin;
+                    const rightLabelX = pageWidth / 2 + 10;
+
+                    // Specs + picture block
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('YARN', leftLabelX, y);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(String(it.yarn || ''), leftLabelX + 60, y);
+
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('DESIGN', rightLabelX, y);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(String(it.designName || ''), rightLabelX + 60, y);
+
+                    y += 14;
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('GREY GSM', leftLabelX, y);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(String(it.greyGsm || ''), leftLabelX + 60, y);
+
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('PICTURE', rightLabelX, y);
+
+                    // Try to add first image if base64
+                    try {
+                        const img = (it.images && it.images.length) ? it.images[0] : '';
+                        if (img && typeof img === 'string' && img.startsWith('data:image/')) {
+                            // place small thumbnail
+                            const imgX = rightLabelX + 60;
+                            const imgY = y - 10;
+                            doc.addImage(img, 'JPEG', imgX, imgY, 60, 40);
+                        }
+                    } catch (e) {}
+
+                    y += 18;
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('WIDTH', leftLabelX, y);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(String(it.width || ''), leftLabelX + 60, y);
+
+                    y += 14;
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('SPANDEX', leftLabelX, y);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(String(it.spandex || ''), leftLabelX + 60, y);
+
+                    y += 16;
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('ROLL', leftLabelX, y);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(String(Number(it.rollCount) || ''), leftLabelX + 60, y);
+
+                    y += 10;
+
+                    // Roll table
+                    const head = [[
+                        'ROLL NO.', 'WEIGHT',
+                        'ROLL NO.', 'WEIGHT',
+                        'ROLL NO.', 'WEIGHT'
+                    ]];
+
+                    const body = rollRows(it.rollCount);
+
+                    doc.autoTable({
+                        startY: y + 6,
+                        head,
+                        body,
+                        theme: 'grid',
+                        styles: {
+                            font: 'helvetica',
+                            fontSize: 9,
+                            cellPadding: 4,
+                            lineColor: [210, 210, 210],
+                            lineWidth: 0.5
+                        },
+                        headStyles: {
+                            fillColor: [245, 245, 245],
+                            textColor: 20,
+                            fontStyle: 'bold'
+                        },
+                        margin: { left: margin, right: margin },
+                        tableWidth: pageWidth - margin * 2,
+                        columnStyles: {
+                            0: { cellWidth: (pageWidth - margin * 2) / 6 },
+                            1: { cellWidth: (pageWidth - margin * 2) / 6 },
+                            2: { cellWidth: (pageWidth - margin * 2) / 6 },
+                            3: { cellWidth: (pageWidth - margin * 2) / 6 },
+                            4: { cellWidth: (pageWidth - margin * 2) / 6 },
+                            5: { cellWidth: (pageWidth - margin * 2) / 6 }
+                        },
+                        didDrawPage: (data) => {},
+                        willDrawCell: (data) => {
+                            // If about to overflow page, jsPDF-autotable will add a new page automatically.
+                        }
+                    });
+
+                    y = doc.lastAutoTable.finalY + 18;
+
+                    // Separator line between items
+                    doc.setDrawColor(235);
+                    doc.line(margin, y - 8, pageWidth - margin, y - 8);
+
+                    // If near bottom, add new page
+                    if (y > doc.internal.pageSize.getHeight() - 120) {
+                        doc.addPage();
+                        y = 60;
+                    }
+                });
+
+                const filename = `ORDER-FORM-${String(o.id || 'CH')}.pdf`;
+                doc.save(filename);
             },
             
             generateReport() {
