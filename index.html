@@ -5,6 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Fabric Order Management System</title>
 
+    <!-- Console Noise Filter (must be first to catch early warnings) -->
+    <script>
+        (function suppressKnownConsoleWarnings(){
+            const originalWarn = console.warn;
+            console.warn = function(...args){
+                const msg = String(args?.[0] ?? '');
+                const suppress = [
+                    "Unrecognized feature: 'vr'",
+                    "Unrecognized feature: 'ambient-light-sensor'",
+                    "Unrecognized feature: 'battery'",
+                    "An iframe which has both allow-scripts and allow-same-origin",
+                    "enableIndexedDbPersistence() will be deprecated",
+                    "cdn.tailwindcss.com should not be used in production"
+                ].some(s => msg.includes(s));
+
+                if (!suppress) originalWarn.apply(console, args);
+            };
+        })();
+    </script>
+
     <!-- Tailwind config (must be defined before Tailwind browser runtime) -->
     <script>
         tailwind = window.tailwind || {};
@@ -176,16 +196,16 @@
                 <button onclick="app.toggleTheme()" class="text-gray-400 hover:text-indigo-600" title="Toggle theme" aria-label="Toggle theme">
                     <i class="fa-solid fa-moon" id="theme-icon-login"></i>
                 </button>
-                <button onclick="app.openDbSettings()" class="text-gray-400 hover:text-indigo-600" title="Database settings" aria-label="Database settings">
+                <button onclick="app.showDbSettingsPrompt()" class="text-gray-400 hover:text-indigo-600" title="Database settings" aria-label="Database settings">
                     <i class="fa-solid fa-database"></i>
                 </button>
             </div>
             
             <div class="text-center mb-6">
-                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 mb-4">
+                <div id="login-logo-container" class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 mb-4 overflow-hidden">
                     <i class="fa-solid fa-layer-group text-3xl"></i>
                 </div>
-                <h1 class="text-2xl font-bold text-gray-900">Fabric OMS</h1>
+                <h1 class="text-2xl font-bold text-gray-900" id="login-company-name">Fabric OMS</h1>
                 <p class="text-gray-500 text-sm">Realtime Order Management</p>
             </div>
             
@@ -222,8 +242,8 @@
         <!-- Sidebar (Desktop) -->
         <aside class="w-64 bg-slate-800 text-white flex-shrink-0 hidden md:flex flex-col transition-all duration-300" id="sidebar">
             <div class="p-4 border-b border-slate-700 flex items-center gap-3">
-                <i class="fa-solid fa-layer-group text-indigo-400 text-xl"></i>
-                <span class="font-bold text-lg tracking-wide">Fabric OMS</span>
+                <i class="fa-solid fa-layer-group text-indigo-400 text-xl" id="sidebar-logo"></i>
+                <span class="font-bold text-lg tracking-wide" id="sidebar-company-name">Fabric OMS</span>
             </div>
             <nav class="flex-1 overflow-y-auto py-4 space-y-1 px-2">
                 <a href="#dashboard" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="dashboard">
@@ -244,13 +264,13 @@
                 <a href="#reports" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="reports">
                     <i class="fa-solid fa-file-invoice w-6 mr-2 text-center"></i> Reports
                 </a>
+                <a href="#configuration" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-700 text-gray-300 hover:text-white" data-target="configuration">
+                    <i class="fa-solid fa-sliders w-6 mr-2 text-center"></i> Configurations
+                </a>
             </nav>
             <div class="p-4 border-t border-slate-700 space-y-4">
                 <button onclick="app.toggleTheme()" class="flex items-center w-full text-sm font-medium text-gray-400 hover:text-white transition-colors">
                     <i class="fa-solid fa-moon w-6 mr-2" id="theme-icon-desktop"></i> <span id="theme-label-desktop">Dark Mode</span>
-                </button>
-                <button onclick="app.openDbSettings()" class="flex items-center w-full text-sm font-medium text-gray-400 hover:text-white transition-colors">
-                    <i class="fa-solid fa-gear w-6 mr-2"></i> Settings
                 </button>
                 <button onclick="app.logout()" class="flex items-center w-full text-sm font-medium text-gray-400 hover:text-white transition-colors">
                     <i class="fa-solid fa-right-from-bracket w-6 mr-2"></i> Logout
@@ -264,7 +284,7 @@
             <!-- Header (Mobile Only) -->
             <header class="bg-white shadow-sm z-10 p-3 flex items-center justify-between md:hidden h-14">
                 <div class="flex items-center gap-2">
-                    <span class="font-bold text-lg text-gray-800">Fabric OMS</span>
+                    <span class="font-bold text-lg text-gray-800" id="mobile-company-name">Fabric OMS</span>
                     <span id="mobile-db-indicator" class="w-2 h-2 rounded-full bg-gray-400"></span>
                 </div>
                 <div class="flex items-center gap-2">
@@ -342,12 +362,12 @@
                             </div>
                             <span class="text-xs font-medium">Reports</span>
                         </a>
-                         <button onclick="app.openDbSettings(); app.toggleMobileMenu()" class="flex flex-col items-center text-gray-600 hover:text-indigo-600">
-                            <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-2 text-gray-600">
-                                <i class="fa-solid fa-gear text-xl"></i>
+                        <a href="#configuration" onclick="app.toggleMobileMenu()" class="flex flex-col items-center text-gray-600 hover:text-indigo-600">
+                            <div class="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center mb-2 text-orange-600">
+                                <i class="fa-solid fa-sliders text-xl"></i>
                             </div>
-                            <span class="text-xs font-medium">Settings</span>
-                        </button>
+                            <span class="text-xs font-medium">Configurations</span>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -808,6 +828,7 @@
 
             // --- THEME (Light/Dark) ---
             theme: 'light',
+            configurationTab: 'firm',
 
             initTheme() {
                 const saved = localStorage.getItem('oms_theme');
@@ -911,6 +932,7 @@
             init() {
                 this.initTheme();
                 Store.init();
+                this.loadCompanyConfig(); // Load branding immediately for login screen
                 this.checkAuth();
                 window.addEventListener('hashchange', () => this.handleRoute());
             },
@@ -930,6 +952,7 @@
                     // Ensure theme buttons (now visible) reflect current theme
                     this.applyTheme(this.theme);
                     this.handleRoute();
+                    this.loadCompanyConfig(); // Load branding after login
                 } else {
                     document.getElementById('auth-screen').classList.remove('hidden');
                     document.getElementById('app-layout').classList.add('hidden');
@@ -979,7 +1002,7 @@
                 document.querySelectorAll('.mobile-nav-link').forEach(el => {
                     const target = el.dataset.target;
                     const isMoreMenu = !target; 
-                    const secondaryRoutes = ['brokers', 'masters', 'reports'];
+                    const secondaryRoutes = ['brokers', 'masters', 'reports', 'configuration'];
 
                     if(target === hash || (isMoreMenu && secondaryRoutes.includes(hash))) {
                         el.classList.add('text-indigo-600');
@@ -1000,6 +1023,7 @@
                     case 'masters': this.renderMasters(content); break;
                     case 'reports': this.renderReports(content); break;
                     case 'order-form': this.renderOrderFormPage(content); break;
+                    case 'configuration': this.renderConfiguration(content); break;
                     default: this.renderDashboard(content); break;
                 }
 
@@ -1096,10 +1120,36 @@
 
             // Customer search state
             customerSearch: '',
+            customerSearchTimeout: null,
 
             filterCustomers(query) {
+                // Clear previous timeout
+                if (this.customerSearchTimeout) {
+                    clearTimeout(this.customerSearchTimeout);
+                }
+                
+                // Update the stored value immediately (for display)
                 this.customerSearch = query.toLowerCase();
-                this.renderCustomers(document.getElementById('content-area'));
+                
+                // Only filter if 3+ characters or empty (to reset)
+                if (query.length >= 3 || query.length === 0) {
+                    // Debounce the render to prevent focus loss
+                    this.customerSearchTimeout = setTimeout(() => {
+                        const searchInput = document.getElementById('customer-search');
+                        const cursorPosition = searchInput ? searchInput.selectionStart : 0;
+                        
+                        this.renderCustomers(document.getElementById('content-area'));
+                        
+                        // Restore focus and cursor position after render
+                        setTimeout(() => {
+                            const newSearchInput = document.getElementById('customer-search');
+                            if (newSearchInput) {
+                                newSearchInput.focus();
+                                newSearchInput.setSelectionRange(cursorPosition, cursorPosition);
+                            }
+                        }, 10);
+                    }, 100);
+                }
             },
 
             viewCustomerOrders(customerId) {
@@ -1140,7 +1190,7 @@
                         <div class="flex gap-2 w-full md:w-auto">
                             <div class="relative flex-1 md:w-64">
                                 <i class="fa-solid fa-search absolute left-3 top-3 text-gray-400 text-sm"></i>
-                                <input type="text" id="customer-search" value="${this.customerSearch}" placeholder="Search Parties..." oninput="app.filterCustomers(this.value)" class="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                                <input type="text" id="customer-search" value="${this.customerSearch}" placeholder="Search (min 3 chars)..." oninput="app.filterCustomers(this.value)" class="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-white">
                             </div>
                             <button onclick="app.openCustomerModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm text-sm flex items-center whitespace-nowrap">
                                 <i class="fa-solid fa-plus mr-1"></i> <span class="hidden md:inline">Add Party</span><span class="md:hidden">Add</span>
@@ -1392,6 +1442,7 @@
                 dateFrom: '',
                 dateTo: ''
             },
+            orderSearchTimeout: null,
 
             resetOrderFilters() {
                 this.orderFilters = {
@@ -1403,6 +1454,36 @@
                     dateTo: ''
                 };
                 this.renderOrders(document.getElementById('content-area'));
+            },
+
+            filterOrdersDebounced(query) {
+                // Clear previous timeout
+                if (this.orderSearchTimeout) {
+                    clearTimeout(this.orderSearchTimeout);
+                }
+                
+                // Update the stored value immediately
+                this.orderFilters.search = query;
+                
+                // Only filter if 3+ characters or empty (to reset)
+                if (query.length >= 3 || query.length === 0) {
+                    // Debounce the render
+                    this.orderSearchTimeout = setTimeout(() => {
+                        const searchInput = document.getElementById('filter-search');
+                        const cursorPosition = searchInput ? searchInput.selectionStart : 0;
+                        
+                        this.renderOrders(document.getElementById('content-area'));
+                        
+                        // Restore focus and cursor position
+                        setTimeout(() => {
+                            const newSearchInput = document.getElementById('filter-search');
+                            if (newSearchInput) {
+                                newSearchInput.focus();
+                                newSearchInput.setSelectionRange(cursorPosition, cursorPosition);
+                            }
+                        }, 10);
+                    }, 100);
+                }
             },
 
             // Convert dd/mm/yyyy to yyyy-mm-dd for comparison
@@ -1433,7 +1514,8 @@
             },
 
             applyOrderFilters() {
-                this.orderFilters.search = document.getElementById('filter-search')?.value || '';
+                // Don't override search - it's handled by filterOrdersDebounced
+                // this.orderFilters.search is already set
                 this.orderFilters.customerId = document.getElementById('filter-customer')?.value || '';
                 this.orderFilters.brokerId = document.getElementById('filter-broker')?.value || '';
                 this.orderFilters.status = document.getElementById('filter-status')?.value || '';
@@ -1556,7 +1638,7 @@
                         <div class="flex gap-2 w-full md:w-auto">
                             <div class="relative flex-1 md:w-64">
                                 <i class="fa-solid fa-search absolute left-3 top-3 text-gray-400 text-sm"></i>
-                                <input type="text" id="filter-search" value="${f.search}" placeholder="Search Order..." oninput="app.applyOrderFilters()" class="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                                <input type="text" id="filter-search" value="${f.search}" placeholder="Search (min 3 chars)..." oninput="app.filterOrdersDebounced(this.value)" class="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                             </div>
                             <button onclick="app.toggleOrderFilters()" class="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 ${hasActiveFilters ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'text-gray-600'}">
                                 <i class="fa-solid fa-filter"></i>
@@ -1754,6 +1836,308 @@
                 `;
             },
 
+            // --- CONFIGURATIONS PAGE (like Masters) ---
+            setConfigurationTab(tab) {
+                this.configurationTab = tab;
+                this.renderConfiguration(document.getElementById('content-area'));
+            },
+
+            renderConfiguration(container) {
+                const tabs = [
+                    { key: 'firm', label: 'Firm', icon: 'fa-building' },
+                    { key: 'firebase', label: 'Firebase Setting', icon: 'fa-database' },
+                    { key: 'password', label: 'Change Password', icon: 'fa-key' }
+                ];
+
+                const activeTab = this.configurationTab || 'firm';
+                let contentHtml = '';
+
+                if (activeTab === 'firm') {
+                    contentHtml = this.renderConfigFirmContent();
+                } else if (activeTab === 'firebase') {
+                    contentHtml = this.renderConfigFirebaseContent();
+                } else if (activeTab === 'password') {
+                    contentHtml = this.renderConfigPasswordContent();
+                }
+
+                container.innerHTML = `
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                        <h2 class="text-2xl font-bold">Configurations</h2>
+                        <div class="text-xs text-gray-500">Manage system settings</div>
+                    </div>
+
+                    <!-- Mobile View (Grid) -->
+                    <div class="md:hidden grid grid-cols-3 gap-2 mb-4">
+                        ${tabs.map(t => {
+                            const isActive = t.key === activeTab;
+                            return `
+                                <button onclick="app.setConfigurationTab('${t.key}')" class="flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${isActive ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg scale-105' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}">
+                                    <i class="fa-solid ${t.icon} text-lg mb-1"></i>
+                                    <span class="text-[10px] font-bold leading-tight text-center">${t.label}</span>
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+
+                    <!-- Desktop View (Horizontal Tabs) -->
+                    <div class="hidden md:block bg-white rounded-lg shadow-sm p-2 mb-4">
+                        <div class="flex gap-2 flex-wrap">
+                            ${tabs.map(t => {
+                                const isActive = t.key === activeTab;
+                                return `
+                                    <button onclick="app.setConfigurationTab('${t.key}')" class="px-4 py-2 rounded-lg text-sm font-bold border transition-colors flex items-center gap-2 ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'}">
+                                        <i class="fa-solid ${t.icon}"></i>
+                                        <span>${t.label}</span>
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Config Content -->
+                    <div class="bg-white rounded-lg shadow-sm p-4 md:p-6">
+                        ${contentHtml}
+                    </div>
+                `;
+            },
+
+            renderConfigFirmContent() {
+                const c = this.companyConfig;
+                return `
+                    <div class="space-y-6">
+                        <!-- Logo Section -->
+                        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-3">Company Logo</label>
+                            <div class="flex items-center gap-4">
+                                <div class="w-24 h-24 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-white ${c.logo ? '' : 'hover:border-indigo-400'}">
+                                    ${c.logo ? `
+                                        <img src="${c.logo}" class="w-full h-full object-contain">
+                                    ` : `
+                                        <div class="text-center text-gray-400">
+                                            <i class="fa-solid fa-image text-2xl mb-1"></i>
+                                            <div class="text-[10px]">No Logo</div>
+                                        </div>
+                                    `}
+                                </div>
+                                <div class="flex flex-col gap-2">
+                                    <label class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold cursor-pointer hover:bg-indigo-700 transition-colors inline-flex items-center gap-2">
+                                        <i class="fa-solid fa-upload"></i> Upload Logo
+                                        <input type="file" accept="image/*" onchange="app.handleCompanyLogo(this)" class="hidden">
+                                    </label>
+                                    ${c.logo ? `
+                                        <button onclick="app.removeCompanyLogo()" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors">
+                                            <i class="fa-solid fa-trash mr-1"></i> Remove
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Basic Info -->
+                        <div>
+                            <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                <i class="fa-solid fa-building text-indigo-500"></i> Basic Information
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="md:col-span-2">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Company / Firm Name</label>
+                                    <input type="text" id="company-name" value="${c.name || ''}" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Your Company Name">
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Address</label>
+                                    <textarea id="company-address" rows="2" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Street Address">${c.address || ''}</textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">City</label>
+                                    <input type="text" id="company-city" value="${c.city || ''}" class="w-full border border-gray-300 rounded-lg p-3" placeholder="City">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">State</label>
+                                    <input type="text" id="company-state" value="${c.state || ''}" class="w-full border border-gray-300 rounded-lg p-3" placeholder="State">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Pincode</label>
+                                    <input type="text" id="company-pincode" value="${c.pincode || ''}" class="w-full border border-gray-300 rounded-lg p-3" placeholder="Pincode">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Contact Info -->
+                        <div>
+                            <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                <i class="fa-solid fa-phone text-indigo-500"></i> Contact Information
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Phone Number</label>
+                                    <input type="tel" id="company-phone" value="${c.phone || ''}" class="w-full border border-gray-300 rounded-lg p-3" placeholder="+91 XXXXX XXXXX">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                                    <input type="email" id="company-email" value="${c.email || ''}" class="w-full border border-gray-300 rounded-lg p-3" placeholder="email@company.com">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tax Info -->
+                        <div>
+                            <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                <i class="fa-solid fa-file-invoice text-indigo-500"></i> Tax Information
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">GST Number</label>
+                                    <input type="text" id="company-gst" value="${c.gstNumber || ''}" class="w-full border border-gray-300 rounded-lg p-3 uppercase" placeholder="22AAAAA0000A1Z5">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">PAN Number</label>
+                                    <input type="text" id="company-pan" value="${c.panNumber || ''}" class="w-full border border-gray-300 rounded-lg p-3 uppercase" placeholder="AAAAA0000A">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bank Details -->
+                        <div>
+                            <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                <i class="fa-solid fa-university text-indigo-500"></i> Bank Details
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Bank Name</label>
+                                    <input type="text" id="company-bank" value="${c.bankName || ''}" class="w-full border border-gray-300 rounded-lg p-3" placeholder="Bank Name">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Account Number</label>
+                                    <input type="text" id="company-account" value="${c.accountNumber || ''}" class="w-full border border-gray-300 rounded-lg p-3" placeholder="Account Number">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">IFSC Code</label>
+                                    <input type="text" id="company-ifsc" value="${c.ifscCode || ''}" class="w-full border border-gray-300 rounded-lg p-3 uppercase" placeholder="SBIN0001234">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Branch Name</label>
+                                    <input type="text" id="company-branch" value="${c.branchName || ''}" class="w-full border border-gray-300 rounded-lg p-3" placeholder="Branch Name">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Save Button -->
+                        <div class="pt-4 border-t">
+                            <button onclick="app.saveCompanyConfig()" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">
+                                <i class="fa-solid fa-save mr-2"></i> Save Company Details
+                            </button>
+                        </div>
+                    </div>
+                `;
+            },
+
+            renderConfigFirebaseContent() {
+                const isConnected = Store.useFirebase;
+                let config = localStorage.getItem('oms_firebase_config');
+                if (!config) {
+                    config = JSON.stringify({
+                        apiKey: "AIzaSyBJIyDmTEn7BgsPy_tx1wgxwA1gFmqX7fI",
+                        authDomain: "fab-oms.firebaseapp.com",
+                        projectId: "fab-oms",
+                        storageBucket: "fab-oms.appspot.com",
+                        messagingSenderId: "21494584900",
+                        appId: "1:21494584900:web:f028d5e99881136c21ce11"
+                    }, null, 4);
+                }
+
+                return `
+                    <div class="space-y-4">
+                        <!-- Connection Status -->
+                        <div class="p-4 rounded-lg ${isConnected ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full ${isConnected ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'} flex items-center justify-center">
+                                    <i class="fa-solid ${isConnected ? 'fa-cloud-check' : 'fa-hard-drive'}"></i>
+                                </div>
+                                <div>
+                                    <div class="font-bold ${isConnected ? 'text-green-800' : 'text-gray-700'}">${isConnected ? 'Connected to Cloud Database' : 'Using Local Storage'}</div>
+                                    <div class="text-sm ${isConnected ? 'text-green-600' : 'text-gray-500'}">${isConnected ? 'Real-time sync enabled' : 'Data stored in browser only'}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-blue-50 p-4 rounded-lg text-sm text-blue-800 border border-blue-100">
+                            <i class="fa-solid fa-info-circle mr-1"></i> Paste your Firebase Configuration JSON below to enable Realtime Cloud Storage.
+                        </div>
+                        
+                        <textarea id="db-config" rows="6" class="w-full border rounded-lg p-3 text-xs font-mono bg-gray-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "..."}'>${config}</textarea>
+                        
+                        <div class="flex flex-col md:flex-row gap-3 pt-2">
+                            <button onclick="app.saveDbSettings()" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 font-bold shadow-sm transition-colors">
+                                <i class="fa-solid fa-plug mr-2"></i>Connect & Save
+                            </button>
+                            <button onclick="app.clearDbSettings()" class="flex-1 bg-red-50 text-red-700 py-3 rounded-lg hover:bg-red-100 font-bold border border-red-200 transition-colors">
+                                <i class="fa-solid fa-unlink mr-2"></i>Disconnect
+                            </button>
+                        </div>
+                        
+                        <!-- Help Section -->
+                        <div class="mt-6 border-t pt-4">
+                            <h4 class="font-bold text-sm text-gray-700 mb-2">How to configure Firebase:</h4>
+                            <ol class="list-decimal pl-4 space-y-2 text-xs text-gray-600">
+                                <li>Go to <a href="https://console.firebase.google.com" target="_blank" class="text-indigo-600 underline">Firebase Console</a> and create a project.</li>
+                                <li><strong>Get Config:</strong> Project Settings > General > Your apps > Add Web App. Copy the object inside <code>const firebaseConfig = { ... }</code>.</li>
+                                <li><strong>Setup Database:</strong> Go to "Firestore Database" in the sidebar and click "Create Database".</li>
+                                <li><strong>Set Rules:</strong> Go to the "Rules" tab in Firestore and allow access.</li>
+                            </ol>
+                        </div>
+                    </div>
+                `;
+            },
+
+            renderConfigPasswordContent() {
+                return `
+                    <div class="max-w-md mx-auto">
+                        <div class="text-center mb-6">
+                            <div class="w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-3">
+                                <i class="fa-solid fa-key text-2xl"></i>
+                            </div>
+                            <h4 class="font-bold text-lg text-gray-900">Change Password</h4>
+                            <p class="text-sm text-gray-500">Update your account password</p>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Current Password</label>
+                                <div class="relative">
+                                    <input type="password" id="current-password" class="w-full border border-gray-300 rounded-lg p-3 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Enter current password">
+                                    <i class="fa-solid fa-lock absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
+                                <div class="relative">
+                                    <input type="password" id="new-password" class="w-full border border-gray-300 rounded-lg p-3 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Enter new password">
+                                    <i class="fa-solid fa-key absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm New Password</label>
+                                <div class="relative">
+                                    <input type="password" id="confirm-password" class="w-full border border-gray-300 rounded-lg p-3 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Confirm new password">
+                                    <i class="fa-solid fa-check-double absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                </div>
+                            </div>
+
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                                <i class="fa-solid fa-exclamation-triangle mr-1"></i>
+                                Password must be at least 4 characters long.
+                            </div>
+
+                            <button onclick="app.changePassword()" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all mt-4">
+                                <i class="fa-solid fa-check mr-2"></i> Update Password
+                            </button>
+                        </div>
+                    </div>
+                `;
+            },
+
             // --- MODALS ---
             openModal(contentHtml) {
                 const modal = document.getElementById('modal-container');
@@ -1769,78 +2153,211 @@
                 // tempOrder is cleared when leaving the order-form route or after saving.
             },
 
-            // Database Settings Modal
-            openDbSettings() {
-                // Show current active config (either local override or default)
-                let config = localStorage.getItem('oms_firebase_config');
-                if (!config) {
-                    config = JSON.stringify({
-                        apiKey: "AIzaSyBJIyDmTEn7BgsPy_tx1wgxwA1gFmqX7fI",
-                        authDomain: "fab-oms.firebaseapp.com",
-                        projectId: "fab-oms",
-                        // Storage bucket should normally be <projectId>.appspot.com
-                        storageBucket: "fab-oms.appspot.com",
-                        messagingSenderId: "21494584900",
-                        appId: "1:21494584900:web:f028d5e99881136c21ce11"
-                    }, null, 4);
+            // --- SETTINGS MODULE ---
+            companyConfig: {
+                name: '',
+                logo: '',
+                address: '',
+                city: '',
+                state: '',
+                pincode: '',
+                phone: '',
+                email: '',
+                gstNumber: '',
+                panNumber: '',
+                bankName: '',
+                accountNumber: '',
+                ifscCode: '',
+                branchName: ''
+            },
+
+            async loadCompanyConfig() {
+                if (Store.useFirebase && Store.db) {
+                    try {
+                        const doc = await Store.db.collection('settings').doc('company').get();
+                        if (doc.exists) {
+                            this.companyConfig = { ...this.companyConfig, ...doc.data() };
+                            this.updateCompanyBranding();
+                        }
+                    } catch (e) { console.error("Load config error", e); }
+                } else {
+                    const saved = localStorage.getItem('oms_company_config');
+                    if (saved) {
+                        this.companyConfig = { ...this.companyConfig, ...JSON.parse(saved) };
+                        this.updateCompanyBranding();
+                    }
+                }
+            },
+
+            updateCompanyBranding() {
+                const c = this.companyConfig;
+                const name = c.name || 'Fabric OMS';
+                
+                // Update Sidebar
+                const sidebarName = document.getElementById('sidebar-company-name');
+                if (sidebarName) sidebarName.textContent = name;
+                
+                const sidebarLogo = document.getElementById('sidebar-logo');
+                if (sidebarLogo && c.logo) {
+                    sidebarLogo.outerHTML = `<img src="${c.logo}" id="sidebar-logo" class="w-8 h-8 rounded object-contain">`;
                 }
 
+                // Update Mobile Header
+                const mobileName = document.getElementById('mobile-company-name');
+                if (mobileName) mobileName.textContent = name;
+
+                // Update Login Page
+                const loginName = document.getElementById('login-company-name');
+                if (loginName) loginName.textContent = name;
+
+                const loginLogoContainer = document.getElementById('login-logo-container');
+                if (loginLogoContainer && c.logo) {
+                    loginLogoContainer.innerHTML = `<img src="${c.logo}" class="w-full h-full object-contain">`;
+                    loginLogoContainer.classList.remove('bg-indigo-100', 'text-indigo-600');
+                } else if (loginLogoContainer) {
+                    loginLogoContainer.innerHTML = `<i class="fa-solid fa-layer-group text-3xl"></i>`;
+                    loginLogoContainer.classList.add('bg-indigo-100', 'text-indigo-600');
+                }
+
+                // Update Window Title
+                document.title = name;
+            },
+
+            async saveCompanyConfig() {
+                const config = {
+                    name: document.getElementById('company-name')?.value || '',
+                    logo: this.companyConfig.logo || '',
+                    address: document.getElementById('company-address')?.value || '',
+                    city: document.getElementById('company-city')?.value || '',
+                    state: document.getElementById('company-state')?.value || '',
+                    pincode: document.getElementById('company-pincode')?.value || '',
+                    phone: document.getElementById('company-phone')?.value || '',
+                    email: document.getElementById('company-email')?.value || '',
+                    gstNumber: document.getElementById('company-gst')?.value || '',
+                    panNumber: document.getElementById('company-pan')?.value || '',
+                    bankName: document.getElementById('company-bank')?.value || '',
+                    accountNumber: document.getElementById('company-account')?.value || '',
+                    ifscCode: document.getElementById('company-ifsc')?.value || '',
+                    branchName: document.getElementById('company-branch')?.value || ''
+                };
+
+                this.companyConfig = config;
+
+                if (Store.useFirebase && Store.db) {
+                    await Store.db.collection('settings').doc('company').set(config);
+                } else {
+                    localStorage.setItem('oms_company_config', JSON.stringify(config));
+                }
+
+                this.updateCompanyBranding();
+                this.showToast('Company configuration saved successfully');
+                this.renderConfiguration(document.getElementById('content-area'));
+            },
+
+            handleCompanyLogo(input) {
+                if (input.files && input.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        this.companyConfig.logo = e.target.result;
+                        this.renderConfiguration(document.getElementById('content-area'));
+                    };
+                    reader.readAsDataURL(input.files[0]);
+                }
+            },
+
+            removeCompanyLogo() {
+                this.companyConfig.logo = '';
+                this.renderConfiguration(document.getElementById('content-area'));
+            },
+
+            async changePassword() {
+                const currentPass = document.getElementById('current-password')?.value || '';
+                const newPass = document.getElementById('new-password')?.value || '';
+                const confirmPass = document.getElementById('confirm-password')?.value || '';
+
+                if (!currentPass || !newPass || !confirmPass) {
+                    this.showToast('Please fill all password fields');
+                    return;
+                }
+
+                if (newPass !== confirmPass) {
+                    this.showToast('New passwords do not match');
+                    return;
+                }
+
+                if (newPass.length < 4) {
+                    this.showToast('Password must be at least 4 characters');
+                    return;
+                }
+
+                // Check current password
+                const user = Store.data.users.find(u => u.username === 'admin');
+                if (!user || user.password !== currentPass) {
+                    this.showToast('Current password is incorrect');
+                    return;
+                }
+
+                // Update password
+                user.password = newPass;
+                
+                if (Store.useFirebase && Store.db) {
+                    await Store.db.collection('settings').doc('users').set({ users: Store.data.users });
+                } else {
+                    Store.saveLocal();
+                }
+
+                this.showToast('Password changed successfully');
+                this.renderConfiguration(document.getElementById('content-area'));
+            },
+
+            openDbSettings() {
+                window.location.hash = 'configuration';
+            },
+
+            // For login screen - opens a simple modal for DB config before login
+            showDbSettingsPrompt() {
+                const config = localStorage.getItem('oms_firebase_config') || '';
                 const html = `
-                    <div class="bg-white h-full md:h-auto">
-                        <div class="flex justify-between items-center border-b pb-3 mb-4">
-                            <h3 class="text-xl font-bold text-gray-900">Database Connection</h3>
-                            <button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fa-solid fa-times text-xl"></i></button>
+                    <div class="p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold">Database Configuration</h3>
+                            <button onclick="app.closeModal()" class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-times text-xl"></i></button>
                         </div>
-                        <div class="space-y-4">
-                            <div class="bg-blue-50 p-4 rounded text-sm text-blue-800">
-                                <i class="fa-solid fa-info-circle mr-1"></i> Paste your Firebase Configuration JSON below to enable Realtime Cloud Storage. 
-                            </div>
-                            <textarea id="db-config" rows="8" class="w-full border rounded p-3 text-xs font-mono bg-gray-50" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "..."}'>${config}</textarea>
-                            
-                            <div class="flex flex-col md:flex-row gap-3 pt-4">
-                                <button onclick="app.saveDbSettings()" class="w-full bg-indigo-600 text-white py-3 rounded hover:bg-indigo-700 font-medium">Connect & Save</button>
-                                <button onclick="app.clearDbSettings()" class="w-full bg-red-100 text-red-700 py-3 rounded hover:bg-red-200">Disconnect (Use Local)</button>
-                            </div>
-                            
-                            <!-- Help Section -->
-                            <div class="mt-6 border-t pt-4">
-                                <h4 class="font-bold text-sm text-gray-700 mb-2">How to configure Firebase:</h4>
-                                <ol class="list-decimal pl-4 space-y-2 text-xs text-gray-600">
-                                    <li>Go to <a href="https://console.firebase.google.com" target="_blank" class="text-indigo-600 underline">Firebase Console</a> and create a project.</li>
-                                    <li><strong>Get Config:</strong> Project Settings > General > Your apps > Add Web App. Copy the object inside <code>const firebaseConfig = { ... }</code>.</li>
-                                    <li><strong>Setup Database:</strong> Go to "Firestore Database" in the sidebar and click "Create Database".</li>
-                                    <li><strong>Set Rules:</strong> Go to the "Rules" tab in Firestore and paste the code below to allow access:</li>
-                                </ol>
-                                <div class="bg-gray-800 text-gray-200 p-2 rounded mt-2 text-xs font-mono select-all">
-                                    rules_version = '2';<br>
-                                    service cloud.firestore {<br>
-                                      &nbsp;&nbsp;match /databases/{database}/documents {<br>
-                                        &nbsp;&nbsp;&nbsp;&nbsp;match /{document=**} {<br>
-                                          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if true;<br>
-                                        &nbsp;&nbsp;&nbsp;&nbsp;}<br>
-                                      &nbsp;&nbsp;}<br>
-                                    }
-                                </div>
-                                <p class="text-[10px] text-red-500 mt-2">* Note: These rules are for testing/internal use only as they allow public read/write access.</p>
-                                <div class="mt-3 text-xs text-gray-600">
-                                    <p class="font-bold mb-1">Also required for Images:</p>
-                                    <p>Enable <strong>Firebase Storage</strong> in your Firebase project. For testing you can set Storage Rules to allow uploads:</p>
-                                    <div class="bg-gray-800 text-gray-200 p-2 rounded mt-2 text-xs font-mono select-all">
-                                        rules_version = '2';<br>
-                                        service firebase.storage {<br>
-                                        &nbsp;&nbsp;match /b/{bucket}/o {<br>
-                                        &nbsp;&nbsp;&nbsp;&nbsp;match /{allPaths=**} {<br>
-                                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if true;<br>
-                                        &nbsp;&nbsp;&nbsp;&nbsp;}<br>
-                                        &nbsp;&nbsp;}<br>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
+                        <div class="bg-blue-50 p-3 rounded-lg text-sm text-blue-800 border border-blue-100 mb-4">
+                            <i class="fa-solid fa-info-circle mr-1"></i> Configure Firebase to enable cloud sync. Leave empty to use local storage.
+                        </div>
+                        <textarea id="login-db-config" rows="6" class="w-full border rounded-lg p-3 text-xs font-mono bg-gray-50 mb-4" placeholder='{"apiKey": "...", "projectId": "..."}'>${config}</textarea>
+                        <div class="flex gap-3">
+                            <button onclick="app.saveLoginDbConfig()" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold">Save & Connect</button>
+                            <button onclick="app.clearLoginDbConfig()" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-bold">Use Local</button>
                         </div>
                     </div>
                 `;
                 this.openModal(html);
+            },
+
+            saveLoginDbConfig() {
+                const configStr = document.getElementById('login-db-config').value;
+                if (configStr.trim()) {
+                    try {
+                        const parsed = JSON.parse(configStr);
+                        const normalized = Store.normalizeFirebaseConfig(parsed);
+                        localStorage.setItem('oms_firebase_config', JSON.stringify(normalized, null, 4));
+                        this.showToast('Configuration saved. Reloading...');
+                        setTimeout(() => window.location.reload(), 1000);
+                    } catch(e) {
+                        alert('Invalid JSON Configuration');
+                    }
+                } else {
+                    localStorage.removeItem('oms_firebase_config');
+                    window.location.reload();
+                }
+            },
+
+            clearLoginDbConfig() {
+                localStorage.removeItem('oms_firebase_config');
+                this.closeModal();
+                window.location.reload();
             },
 
             saveDbSettings() {
@@ -2289,7 +2806,7 @@
                     (item.greyGsm !== undefined && item.greyGsm !== '' && item.greyGsm !== null) ? `Grey GSM: ${item.greyGsm}` : '',
                     (item.width !== undefined && item.width !== '' && item.width !== null) ? `Width: ${item.width}` : '',
                     (item.spandex !== undefined && item.spandex !== '' && item.spandex !== null) ? `Spandex: ${item.spandex}` : '',
-                    (item.rollCount !== undefined && item.rollCount !== '' && item.rollCount !== null) ? `Roll: ${item.rollCount}` : ''
+                    (item.rollCount !== undefined && item.rollCount !== '' && item.rollCount !== null && Number(item.rollCount) > 0) ? `Roll: ${item.rollCount}` : ''
                 ].filter(Boolean);
 
                 return `
@@ -2486,7 +3003,6 @@
                     item.unit = units[0]?.name || 'Meters';
                 }
 
-                item.rollCount = Number(item.rollCount || 0);
                 item.qty = Number(item.qty || 0);
                 item.rate = Number(item.rate || 0);
 
@@ -2634,9 +3150,6 @@
                 this.tempOrder.millName = mill ? mill.name : '';
             },
 
-            // Legacy inline item editing functions were replaced with a dedicated Item Modal.
-            // Use openItemModal() to add/edit items.
-
             removeOrderItem(index) {
                 if (!this.tempOrder) return;
                 this.tempOrder.items.splice(index, 1);
@@ -2661,19 +3174,12 @@
                     payload.updatedDate = new Date().toISOString();
                     if (isNew) payload.createdDate = new Date().toISOString();
 
-                    // Normalize items - ensure each item has exact expected structure
+                    // Normalize items
                     payload.items = (payload.items || []).map((it, idx) => {
-                        // Ensure images is always a clean array of strings
                         let images = [];
                         if (Array.isArray(it.images)) {
                             images = it.images.filter(img => typeof img === 'string' && img.length > 0);
                         }
-                        // Handle legacy single image field
-                        if (it.image && typeof it.image === 'string') {
-                            images.push(it.image);
-                        }
-                        
-                        // Return a clean, normalized item object with ALL fields explicitly defined
                         return {
                             designId: String(it.designId || ''),
                             designName: String(it.designName || ''),
@@ -2681,33 +3187,12 @@
                             greyGsm: String(it.greyGsmName || it.greyGsm || ''),
                             width: String(it.width || ''),
                             spandex: String(it.spandexName || it.spandex || ''),
-                            rollCount: Number(it.rollCount) || 0,
                             qty: Number(it.qty) || 0,
                             unit: String(it.unit || 'Meters'),
                             rate: Number(it.rate) || 0,
                             images: images
                         };
                     });
-
-                    if (Store.useFirebase) {
-                        // Upload any base64 images to Firebase Storage and replace with URLs
-                        for (let i = 0; i < payload.items.length; i++) {
-                            const item = payload.items[i];
-                            const outUrls = [];
-                            for (let j = 0; j < (item.images || []).length; j++) {
-                                const img = item.images[j];
-                                // If already a URL, keep it
-                                if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
-                                    outUrls.push(img);
-                                } else {
-                                    const filePath = `orders/${orderId}/item-${i+1}/${Date.now()}-${j}.jpg`;
-                                    const url = await Store.uploadImageDataUrl(img, filePath);
-                                    outUrls.push(url);
-                                }
-                            }
-                            item.images = outUrls;
-                        }
-                    }
 
                     // Sanitize for Firestore
                     const cleanPayload = Store.sanitizeForFirestore(payload);
@@ -2770,24 +3255,20 @@
                                 <thead class="bg-gray-50 border-b">
                                     <tr>
                                         <th class="p-3">Item</th>
-                                        <th class="p-3 text-right">Qty</th>
+                                        <th class="p-3 text-right">Roll Qty</th>
                                         <th class="p-3 text-right">Rate</th>
                                         <th class="p-3 text-right">Total</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y">
                                     ${o.items.map((item) => {
-                                        // Handle legacy single image or new array
-                                        let displayImages = [];
-                                        if (item.images && item.images.length) displayImages = item.images;
-                                        else if (item.image) displayImages = [item.image];
+                                        let displayImages = item.images || [];
 
                                         const specs = [
                                             item.yarn ? `Yarn: ${item.yarn}` : '',
-                                            (item.greyGsm !== undefined && item.greyGsm !== '' && item.greyGsm !== null) ? `Grey GSM: ${item.greyGsm}` : '',
-                                            (item.width !== undefined && item.width !== '' && item.width !== null) ? `Width: ${item.width}` : '',
-                                            (item.spandex !== undefined && item.spandex !== '' && item.spandex !== null) ? `Spandex: ${item.spandex}` : '',
-                                            (item.rollCount !== undefined && item.rollCount !== '' && item.rollCount !== null && Number(item.rollCount) > 0) ? `Roll: ${item.rollCount}` : ''
+                                            item.greyGsm ? `Grey GSM: ${item.greyGsm}` : '',
+                                            item.width ? `Width: ${item.width}` : '',
+                                            item.spandex ? `Spandex: ${item.spandex}` : ''
                                         ].filter(Boolean);
 
                                         return `
@@ -2841,12 +3322,6 @@
                 }
             },
 
-            filterOrders(query) {
-                // Legacy function - now using applyOrderFilters() instead
-                this.orderFilters.search = query;
-                this.renderOrders(document.getElementById('content-area'));
-            },
-
             calculateOrderTotal(order) {
                 return order.items.reduce((sum, item) => sum + (item.qty * item.rate), 0);
             },
@@ -2880,17 +3355,14 @@
                     let valA = a[column];
                     let valB = b[column];
                     
-                    // Handle dates
                     if (column.includes('date') || column.includes('Date')) {
                         valA = new Date(valA || 0).getTime();
                         valB = new Date(valB || 0).getTime();
                     }
-                    // Handle numbers
                     else if (typeof valA === 'number' || column === 'commission') {
                         valA = Number(valA) || 0;
                         valB = Number(valB) || 0;
                     }
-                    // Handle strings
                     else {
                         valA = String(valA || '').toLowerCase();
                         valB = String(valB || '').toLowerCase();
@@ -2911,7 +3383,6 @@
                     state.direction = 'asc';
                 }
                 
-                // Re-render the appropriate view
                 const content = document.getElementById('content-area');
                 switch(collection) {
                     case 'orders': this.renderOrders(content); break;
@@ -2992,15 +3463,12 @@
                 this.updateLightbox();
             },
 
-            // Collect all images from an order
             getOrderImages(order) {
                 const images = [];
                 if (order.items) {
                     order.items.forEach(item => {
                         if (item.images && item.images.length) {
                             images.push(...item.images);
-                        } else if (item.image) {
-                            images.push(item.image);
                         }
                     });
                 }
@@ -3015,7 +3483,6 @@
                     return;
                 }
 
-                // jsPDF UMD access
                 const { jsPDF } = window.jspdf || {};
                 if (!jsPDF) {
                     alert('PDF library not loaded. Please check internet connection.');
@@ -3031,23 +3498,18 @@
                 const broker = Store.getById('brokers', o.brokerId) || {};
 
                 // ========== PREMIUM HEADER ==========
-                // Dark header bar
-                doc.setFillColor(15, 23, 42); // slate-900
+                doc.setFillColor(15, 23, 42); 
                 doc.rect(0, 0, pageWidth, 50, 'F');
                 
-                // Header title
                 doc.setFont('helvetica', 'bold');
                 doc.setFontSize(20);
                 doc.setTextColor(255, 255, 255);
                 doc.text('ORDER FORM', pageWidth / 2, 32, { align: 'center' });
 
-                // Reset text color
                 doc.setTextColor(0, 0, 0);
 
-                // ========== ORDER DETAILS BOX ==========
                 let currentY = 70;
                 
-                // Order details table with premium styling
                 doc.autoTable({
                     startY: currentY,
                     body: [
@@ -3091,10 +3553,8 @@
 
                 currentY = doc.lastAutoTable.finalY + 20;
 
-                // ========== ITEMS ==========
                 const items = Array.isArray(o.items) ? o.items : [];
 
-                // Roll rows generator (3 columns layout - COLUMN-WISE filling)
                 const buildRollRows = (rollQty) => {
                     const count = Number(rollQty) || 0;
                     const base = 1001;
@@ -3104,11 +3564,10 @@
                     for (let r = 0; r < rows; r++) {
                         const row = [];
                         for (let c = 0; c < columns; c++) {
-                            // Column-wise: fill down first column, then second, then third
                             const idx = c * rows + r;
                             const rollNo = (idx < count) ? (base + idx) : '';
                             row.push(rollNo ? String(rollNo) : '');
-                            row.push(''); // weight column blank
+                            row.push(''); 
                         }
                         body.push(row);
                     }
@@ -3116,14 +3575,12 @@
                 };
 
                 items.forEach((it, idx) => {
-                    // Check if we need a new page
                     if (currentY > pageHeight - 200) {
                         doc.addPage();
                         currentY = 40;
                     }
 
-                    // ========== ITEM HEADER ==========
-                    doc.setFillColor(79, 70, 229); // indigo-600
+                    doc.setFillColor(79, 70, 229); 
                     doc.rect(margin, currentY, pageWidth - margin * 2, 24, 'F');
                     doc.setFont('helvetica', 'bold');
                     doc.setFontSize(11);
@@ -3134,9 +3591,6 @@
                     
                     currentY += 28;
 
-                    // ========== ITEM SPECS TABLE ==========
-                    // Left side: YARN, GREY GSM, WIDTH, SPANDEX
-                    // Right side: DESIGN, PICTURE
                     const itemSpecsBody = [
                         [
                             { content: 'YARN', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
@@ -3181,7 +3635,6 @@
                             3: { cellWidth: (pageWidth - margin * 2) * 0.32, halign: 'center' }
                         },
                         didDrawCell: (data) => {
-                            // Insert picture in the PICTURE cell (row 1, col 3)
                             if (data.row.index === 1 && data.column.index === 3) {
                                 const img = (it.images && it.images.length) ? it.images[0] : '';
                                 if (img && typeof img === 'string' && img.startsWith('data:image/')) {
@@ -3189,11 +3642,7 @@
                                     const imgSize = Math.min(cell.width - 16, cell.height * 2.5, 80);
                                     const imgX = cell.x + (cell.width - imgSize) / 2;
                                     const imgY = cell.y + 6;
-                                    try {
-                                        doc.addImage(img, 'JPEG', imgX, imgY, imgSize, imgSize * 0.75);
-                                    } catch(e) {
-                                        // Image error, skip
-                                    }
+                                    try { doc.addImage(img, 'JPEG', imgX, imgY, imgSize, imgSize * 0.75); } catch(e) {}
                                 }
                             }
                         }
@@ -3201,7 +3650,6 @@
 
                     currentY = doc.lastAutoTable.finalY + 12;
 
-                    // ========== ROLL/WEIGHT TABLE ==========
                     const rollHead = [[
                         { content: 'ROLL NO.', styles: { halign: 'center' } },
                         { content: 'WEIGHT', styles: { halign: 'center' } },
@@ -3228,14 +3676,12 @@
                             valign: 'middle'
                         },
                         headStyles: {
-                            fillColor: [51, 65, 85], // slate-700
+                            fillColor: [51, 65, 85], 
                             textColor: 255,
                             fontStyle: 'bold',
                             fontSize: 9
                         },
-                        alternateRowStyles: {
-                            fillColor: [248, 250, 252]
-                        },
+                        alternateRowStyles: { fillColor: [248, 250, 252] },
                         margin: { left: margin, right: margin },
                         tableWidth: pageWidth - margin * 2,
                         columnStyles: {
@@ -3251,7 +3697,6 @@
                     currentY = doc.lastAutoTable.finalY + 25;
                 });
 
-                // ========== FOOTER ==========
                 const pageCount = doc.internal.getNumberOfPages();
                 for (let i = 1; i <= pageCount; i++) {
                     doc.setPage(i);
@@ -3260,13 +3705,9 @@
                     doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 20, { align: 'center' });
                 }
 
-                // Open in new tab
-                const filename = `ORDER-FORM-${String(o.id || 'CH')}.pdf`;
                 const pdfUrl = doc.output('bloburl');
                 const win = window.open(pdfUrl, '_blank');
-                if (!win) {
-                    doc.save(filename);
-                }
+                if (!win) doc.save(`ORDER-FORM-${o.id}.pdf`);
             },
             
             generateReport() {
@@ -3291,7 +3732,7 @@
                         <tbody>
                             ${orders.length > 0 ? orders.map(o => `
                                 <tr class="border-b border-gray-100">
-                                    <td class="py-2">${o.id.split('-').pop()}</td>
+                                    <td class="py-2">${o.id}</td>
                                     <td class="py-2 truncate max-w-[100px]">${o.customerName}</td>
                                     <td class="py-2 text-right">${this.calculateOrderTotal(o)}</td>
                                 </tr>
